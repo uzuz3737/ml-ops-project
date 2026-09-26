@@ -16,7 +16,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY config/ /app/config/
 COPY src/ /app/src/
 COPY serving/ /app/serving/
-COPY models/ /app/models/
+# Create directories for models and data
+RUN mkdir -p /app/models /app/data
 
 EXPOSE 8000
 

@@ -36,7 +36,8 @@ mlruns/
 mlartifacts/
 
 # Airflow logs and database
-logs/
+logs/*
+!logs/.gitkeep
 airflow.db
 airflow.cfg
 webserver_config.py
