@@ -29,7 +29,7 @@
       "gridPos": {"h": 7, "w": 8, "x": 16, "y": 0},
       "id": 3,
       "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"expr": "100 * sum(rate({__name__=\":tensorflow:serving:request_count\",model_name=\"CreditCardDefaultCatBoost\",status!=\"OK\"}[5m])) / clamp_min(sum(rate({__name__=\":tensorflow:serving:request_count\",model_name=\"CreditCardDefaultCatBoost\"}[5m])), 1e-9)", "refId": "A"}],
+      "targets": [{"expr": "100 * (sum(rate({__name__=\":tensorflow:serving:request_count\",model_name=\"CreditCardDefaultCatBoost\",status!=\"OK\"}[5m])) or vector(0)) / clamp_min((sum(rate({__name__=\":tensorflow:serving:request_count\",model_name=\"CreditCardDefaultCatBoost\"}[5m])) or vector(0)), 1e-9)", "refId": "A"}],
       "title": "Request Error Rate",
       "type": "stat"
     },
@@ -48,9 +48,9 @@
       "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
       "gridPos": {"h": 8, "w": 6, "x": 12, "y": 7},
       "id": 5,
-      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "name"},
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value"},
       "targets": [{"expr": "max(up{job=\"tensorflow-serving\"}) or vector(0)", "refId": "A"}],
-      "title": "Model Availability (1 = AVAILABLE)",
+      "title": "Model Availability (1=AVAILABLE, 0=UNAVAILABLE)",
       "type": "stat"
     },
     {
