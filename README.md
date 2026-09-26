@@ -119,9 +119,9 @@ docker compose up --build -d
 
 | Service | URL | Credentials (if prompted) |
 | :--- | :--- | :--- |
-| **FastAPI Serving** | [http://localhost:8000](http://localhost:8000) (Swagger: `/docs`) | None |
+| **FastAPI Serving** | [http://localhost:8001](http://localhost:8001) (Swagger: `/docs`) | None |
 | **Airflow UI** | [http://localhost:8080](http://localhost:8080) | `admin` / `admin` |
-| **MLflow Server** | [http://localhost:5000](http://localhost:5000) | None |
+| **MLflow Server** | [http://localhost:8000](http://localhost:8000) | None |
 | **Prometheus** | [http://localhost:9090](http://localhost:9090) | None |
 | **Grafana** | [http://localhost:3000](http://localhost:3000) | `admin` / `admin` |
 
@@ -166,7 +166,7 @@ docker compose up --build -d
 
 ### 1. Health Check
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:8001/health
 ```
 **Response**:
 ```json
@@ -180,7 +180,7 @@ curl http://localhost:8000/health
 
 ### 2. Single Customer Default Prediction
 ```bash
-curl -X POST "http://localhost:8000/predict" \
+curl -X POST "http://localhost:8001/predict" \
      -H "Content-Type: application/json" \
      -d '{
        "LIMIT_BAL": 50000.0,
@@ -219,7 +219,7 @@ curl -X POST "http://localhost:8000/predict" \
 
 ### 3. Prometheus Metrics Endpoint
 ```bash
-curl http://localhost:8000/metrics
+curl http://localhost:8001/metrics
 ```
 
 ---

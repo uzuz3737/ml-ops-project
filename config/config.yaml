@@ -38,7 +38,7 @@ data:
     BILL_AMT5: [-10000000, 10000000]
     BILL_AMT6: [-10000000, 10000000]
     PAY_AMT1: [0, 1000000]
-    PAY_AMT2: [0, 1000000]
+    PAY_AMT2: [0, 2000000]
     PAY_AMT3: [0, 1000000]
     PAY_AMT4: [0, 1000000]
     PAY_AMT5: [0, 1000000]
@@ -87,7 +87,7 @@ model:
     n_jobs: -1
 
 mlflow:
-  tracking_uri: "http://localhost:5000"
+  tracking_uri: "http://localhost:8000"
   experiment_name: "credit_card_default_xgboost"
   registered_model_name: "CreditCardDefaultXGBoost"
 
