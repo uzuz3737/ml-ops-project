@@ -59,6 +59,11 @@ def load_raw_dataset(project_root: Path) -> pd.DataFrame:
     except Exception as e:
         logger.warning(f"Could not fetch from UCI repo: {e}. Checking local files...")
         
+    local_csv = project_root / "data" / "raw" / "credit_card_clients.csv"
+    if local_csv.exists():
+        logger.info(f"Loading from local CSV: {local_csv}")
+        return pd.read_csv(local_csv)
+
     local_xls = project_root / "default of credit card clients.xls"
     if local_xls.exists():
         logger.info(f"Loading from local Excel: {local_xls}")
@@ -73,7 +78,7 @@ def load_raw_dataset(project_root: Path) -> pd.DataFrame:
             logger.error(f"Failed to read local excel: {ex}")
             raise ex
             
-    raise FileNotFoundError("No available data source found (UCI API or local Excel).")
+    raise FileNotFoundError("No available data source found (UCI API, local CSV or local Excel).")
 
 
 def ingest_data(config: dict = None) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:

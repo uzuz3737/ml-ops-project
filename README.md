@@ -121,9 +121,11 @@ docker compose up --build -d
 | :--- | :--- | :--- |
 | **FastAPI Serving** | [http://localhost:8000](http://localhost:8000) (Swagger: `/docs`) | None |
 | **Airflow UI** | [http://localhost:8080](http://localhost:8080) | `admin` / `admin` |
-| **MLflow Server** | [http://localhost:5000](http://localhost:5000) | None |
+| **MLflow Server** | [http://localhost:5001](http://localhost:5001) | None |
 | **Prometheus** | [http://localhost:9090](http://localhost:9090) | None |
 | **Grafana** | [http://localhost:3000](http://localhost:3000) | `admin` / `admin` |
+
+> **Note:** MLflow listens on `6000` inside the Docker network (`http://mlflow:6000`) but is published on host port `5001`, because browsers block port 6000 and Windows reserves port 5000.
 
 ---
 
@@ -233,3 +235,37 @@ pytest tests/ -v --cov=src --cov=serving --cov-report=term-missing
 ```
 
 The GitHub Actions workflow at [`.github/workflows/ci-cd.yml`](file:///.github/workflows/ci-cd.yml) automatically runs linting, tests, and builds Docker containers on every pull request to `main`.
+
+---
+
+## 🌿 Contribution Workflow (Branch & Push)
+
+`main` holds the baseline XGBoost work of another team member. Do **not** commit to `main` directly — develop on a feature branch and merge via Pull Request.
+
+### 1. Create a branch before making changes
+```bash
+git switch main
+git pull origin main
+git switch -c feature/<task-name>        # e.g. feature/logistic-regression
+```
+
+### 2. Commit your changes
+```bash
+git status                               # review changed files
+git add <files>                          # never add .env
+git commit -m "feat(model): replace XGBoost with Logistic Regression"
+```
+
+### 3. Push the branch to GitHub
+```bash
+git push -u origin feature/<task-name>   # -u only on the first push; afterwards just `git push`
+```
+
+### 4. Open a Pull Request into `main`
+Open the repository on GitHub and click **Compare & pull request**, or:
+```bash
+gh pr create --base main --fill
+```
+CI runs lint, tests and Docker builds on the PR; the owner of `main` reviews and merges.
+
+> **Note:** Pushing requires collaborator access to this repository. Without it, fork the repo, push the branch to your fork, and open the PR from there.

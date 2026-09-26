@@ -60,3 +60,5 @@ models/saved/
 Thumbs.db
 .vscode/
 .idea/
+
+.env
