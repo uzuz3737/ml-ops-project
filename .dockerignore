@@ -1,0 +1,15 @@
+.git
+.github
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.venv
+venv
+env
+mlruns
+mlartifacts
+prometheus_data
+grafana_data
+.DS_Store
+*.xls
