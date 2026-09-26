@@ -27,10 +27,11 @@ def task_data_ingestion():
 
 
 def task_data_validation():
+    from airflow.exceptions import AirflowFailException
     from src.data.validation import run_validation
     is_valid, anomalies = run_validation()
     if not is_valid:
-        print(f"Validation warnings found: {anomalies}")
+        raise AirflowFailException(f"Data validation failed; downstream training was blocked: {anomalies}")
     else:
         print("Data validation successfully passed with no anomalies.")
 
@@ -65,10 +66,10 @@ def task_health_check_service():
 with DAG(
     dag_id="credit_card_default_mlops_pipeline",
     default_args=default_args,
-    description="End-to-end XGBoost Credit Card Default Pipeline with TFDV and MLflow",
+    description="End-to-end XGBoost and CatBoost credit default pipeline with validation and MLflow",
     schedule_interval="@weekly",
     catchup=False,
-    tags=["mlops", "xgboost", "tfdv", "mlflow"],
+    tags=["mlops", "xgboost", "catboost", "data-validation", "mlflow"],
 ) as dag:
 
     ingest_step = PythonOperator(

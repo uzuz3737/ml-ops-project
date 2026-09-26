@@ -232,6 +232,10 @@ CatBoost uses the same ingested train/validation/test splits and shared `prepare
 
 To serve the registered CatBoost Production model, set `serving.model_family: "catboost"` in `config/config.yaml`; the default remains XGBoost.
 
+### Data validation contract
+
+The validator checks required columns, schema consistency across train/evaluation, numeric and finite values, nulls, binary target labels, configured category domains, and configured numerical ranges. Airflow raises a task failure when validation fails, so both model training tasks are blocked. Run `pytest tests/test_validation.py -v` to see passing and deliberately corrupted data examples.
+
 Run all unit and integration tests with coverage:
 
 ```bash

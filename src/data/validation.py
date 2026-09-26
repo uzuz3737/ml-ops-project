@@ -1,7 +1,7 @@
-import os
 import json
 from pathlib import Path
 import pandas as pd
+import numpy as np
 from src.utils.config import load_config, get_project_root
 from src.utils.logger import get_logger
 
@@ -10,6 +10,12 @@ logger = get_logger(__name__)
 
 def validate_with_tfdv(train_df: pd.DataFrame, eval_df: pd.DataFrame, config: dict):
     """Data validation using TensorFlow Data Validation (TFDV)."""
+    # Apply the explicit project contract first; TFDV complements it with
+    # schema statistics and distribution checks rather than replacing it.
+    is_contract_valid, contract_anomalies = validate_with_fallback(train_df, eval_df, config)
+    if not is_contract_valid:
+        return False, contract_anomalies
+
     import tensorflow_data_validation as tfdv
     from google.protobuf import text_format
 
@@ -37,6 +43,7 @@ def validate_with_tfdv(train_df: pd.DataFrame, eval_df: pd.DataFrame, config: di
     anomalies = tfdv.validate_statistics(statistics=eval_stats, schema=schema)
 
     anomaly_file = root / config["data"]["anomalies_file"]
+    anomaly_file.parent.mkdir(parents=True, exist_ok=True)
     with open(anomaly_file, "w", encoding="utf-8") as f:
         f.write(text_format.MessageToString(anomalies))
 
@@ -51,59 +58,101 @@ def validate_with_tfdv(train_df: pd.DataFrame, eval_df: pd.DataFrame, config: di
 
 
 def validate_with_fallback(train_df: pd.DataFrame, eval_df: pd.DataFrame, config: dict):
-    """Statistical and schema validation engine (used when TFDV is unavailable in local OS)."""
+    """Validate required columns, types, nulls, labels, and categorical domains."""
     logger.info("Running statistical schema validator...")
     root = get_project_root()
     schema_dir = root / config["data"]["schema_dir"]
     schema_dir.mkdir(parents=True, exist_ok=True)
 
     anomalies = []
+    target_col = config["data"]["target_col"]
+    feature_cols = config["features"]["categorical_cols"] + config["features"]["numerical_cols"]
+    required_cols = set(feature_cols + [target_col])
 
-    # 1. Missing columns
-    missing_cols = set(train_df.columns) - set(eval_df.columns)
-    if missing_cols:
-        anomalies.append(f"Missing columns in evaluation dataset: {missing_cols}")
+    if train_df.empty:
+        anomalies.append("Training dataset is empty")
+    if eval_df.empty:
+        anomalies.append("Evaluation dataset is empty")
 
-    # 2. Null values
-    train_nulls = train_df.isnull().sum()
-    eval_nulls = eval_df.isnull().sum()
-    if eval_nulls.sum() > 0:
-        anomalies.append(f"Unexpected null values found in eval set: {eval_nulls[eval_nulls > 0].to_dict()}")
+    for name, frame in (("train", train_df), ("evaluation", eval_df)):
+        missing = required_cols - set(frame.columns)
+        if missing:
+            anomalies.append(f"{name} dataset is missing required columns: {sorted(missing)}")
 
-    # 3. Categorical range checks
-    for cat_col in config["features"]["categorical_cols"]:
-        if cat_col in train_df.columns and cat_col in eval_df.columns:
-            train_vals = set(train_df[cat_col].unique())
-            eval_vals = set(eval_df[cat_col].unique())
-            unexpected = eval_vals - train_vals
-            if unexpected:
-                anomalies.append(f"Categorical drift/unseen values in {cat_col}: {unexpected}")
+    missing_eval = set(train_df.columns) - set(eval_df.columns)
+    extra_eval = set(eval_df.columns) - set(train_df.columns)
+    if missing_eval:
+        anomalies.append(f"Evaluation dataset is missing training columns: {sorted(missing_eval)}")
+    if extra_eval:
+        anomalies.append(f"Evaluation dataset has unexpected columns: {sorted(extra_eval)}")
 
-    # 4. Numerical range/outlier checks
-    for num_col in config["features"]["numerical_cols"]:
-        if num_col in train_df.columns and num_col in eval_df.columns:
-            min_val = train_df[num_col].quantile(0.001)
-            max_val = train_df[num_col].quantile(0.999)
-            eval_out_of_bounds = ((eval_df[num_col] < min_val * 2) | (eval_df[num_col] > max_val * 2)).sum()
-            if eval_out_of_bounds > 0:
-                logger.debug(f"{eval_out_of_bounds} extreme values in {num_col}")
+    for name, frame in (("train", train_df), ("evaluation", eval_df)):
+        nulls = frame.isnull().sum()
+        if nulls.sum() > 0:
+            anomalies.append(f"{name} dataset contains null values: {nulls[nulls > 0].to_dict()}")
+
+        for col in feature_cols + [target_col]:
+            if col not in frame.columns:
+                continue
+            if not pd.api.types.is_numeric_dtype(frame[col]):
+                anomalies.append(f"{name}.{col} must be numeric, got {frame[col].dtype}")
+                continue
+            values = frame[col].to_numpy()
+            if not np.isfinite(values).all():
+                anomalies.append(f"{name}.{col} contains non-finite values")
+
+        if target_col in frame.columns:
+            labels = set(frame[target_col].dropna().unique())
+            invalid_labels = labels - {0, 1}
+            if invalid_labels:
+                anomalies.append(f"{name}.{target_col} must contain only 0/1 labels; found {sorted(invalid_labels)}")
+
+    allowed_values = config["data"].get("allowed_values", {})
+    for col, allowed in allowed_values.items():
+        for name, frame in (("train", train_df), ("evaluation", eval_df)):
+            if col in frame.columns:
+                invalid = set(frame[col].dropna().unique()) - set(allowed)
+                if invalid:
+                    anomalies.append(f"{name}.{col} contains unsupported values: {sorted(invalid)}")
+
+    for col, bounds in config["data"].get("valid_ranges", {}).items():
+        minimum, maximum = bounds
+        for name, frame in (("train", train_df), ("evaluation", eval_df)):
+            if col in frame.columns and pd.api.types.is_numeric_dtype(frame[col]):
+                outside = frame[col].notna() & ((frame[col] < minimum) | (frame[col] > maximum))
+                if outside.any():
+                    observed = frame.loc[outside, col].agg(["min", "max"]).to_dict()
+                    anomalies.append(
+                        f"{name}.{col} has values outside [{minimum}, {maximum}]: {observed}"
+                    )
+
+    # New category levels are a schema mismatch even when they happen to be
+    # inside a broad legal range; log them distinctly as potential drift.
+    for col in config["features"]["categorical_cols"]:
+        if col in train_df.columns and col in eval_df.columns:
+            unseen = set(eval_df[col].dropna().unique()) - set(train_df[col].dropna().unique())
+            if unseen:
+                anomalies.append(f"Evaluation has unseen category values in {col}: {sorted(unseen)}")
 
     # Save schema metadata
     schema = {
         "columns": {col: str(dtype) for col, dtype in train_df.dtypes.items()},
         "shape_train": list(train_df.shape),
         "shape_eval": list(eval_df.shape),
+        "required_columns": sorted(required_cols),
+        "allowed_values": allowed_values,
     }
     schema_file = schema_dir / "schema.json"
     with open(schema_file, "w", encoding="utf-8") as f:
         json.dump(schema, f, indent=2)
 
     anomaly_file = root / config["data"]["anomalies_file"]
+    anomaly_file.parent.mkdir(parents=True, exist_ok=True)
     with open(anomaly_file, "w", encoding="utf-8") as f:
         f.write("\n".join(anomalies) if anomalies else "NO_ANOMALIES_DETECTED")
 
     if anomalies:
-        logger.warning(f"Schema validator found {len(anomalies)} warnings: {anomalies}")
+        logger.error("Schema validation FAILED with %s issue(s): %s", len(anomalies), anomalies)
         return False, anomalies
     else:
         logger.info("Schema validation PASSED! No anomalies detected.")

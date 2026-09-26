@@ -2,7 +2,7 @@ name: MLOps CI/CD Pipeline
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "pairoj_catboot" ]
   pull_request:
     branches: [ "main" ]
 
@@ -36,6 +36,9 @@ jobs:
       - name: Run Unit Tests with Pytest
         run: |
           pytest tests/ -v --cov=src --cov=serving --cov-report=xml --cov-report=term-missing
+
+      - name: Verify Data Validation Pass and Fail Cases
+        run: pytest tests/test_validation.py -v
 
       - name: Upload Test Coverage
         uses: actions/upload-artifact@v4

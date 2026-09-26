@@ -18,6 +18,31 @@ data:
   test_size: 0.2
   val_size: 0.1
   random_state: 42
+  allowed_values:
+    SEX: [1, 2]
+    EDUCATION: [0, 1, 2, 3, 4, 5, 6]
+    MARRIAGE: [0, 1, 2, 3]
+  valid_ranges:
+    LIMIT_BAL: [0, 1000000]
+    AGE: [18, 120]
+    PAY_0: [-2, 9]
+    PAY_2: [-2, 9]
+    PAY_3: [-2, 9]
+    PAY_4: [-2, 9]
+    PAY_5: [-2, 9]
+    PAY_6: [-2, 9]
+    BILL_AMT1: [-10000000, 10000000]
+    BILL_AMT2: [-10000000, 10000000]
+    BILL_AMT3: [-10000000, 10000000]
+    BILL_AMT4: [-10000000, 10000000]
+    BILL_AMT5: [-10000000, 10000000]
+    BILL_AMT6: [-10000000, 10000000]
+    PAY_AMT1: [0, 1000000]
+    PAY_AMT2: [0, 1000000]
+    PAY_AMT3: [0, 1000000]
+    PAY_AMT4: [0, 1000000]
+    PAY_AMT5: [0, 1000000]
+    PAY_AMT6: [0, 1000000]
 
 features:
   categorical_cols:
