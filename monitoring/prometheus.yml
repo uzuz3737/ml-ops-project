@@ -10,3 +10,13 @@ scrape_configs:
         labels:
           app: "credit-card-default-api"
           env: "production"
+
+  - job_name: "tensorflow-serving"
+    metrics_path: "/monitoring/prometheus/metrics"
+    static_configs:
+      - targets: ["tf-serving:8501"]
+        labels:
+          app: "credit-card-default-catboost"
+          model: "CreditCardDefaultCatBoost"
+          model_version: "1"
+          env: "production"

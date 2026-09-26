@@ -52,6 +52,7 @@ data/processed/
 data/validation/
 data/monitoring/
 models/saved/
+models/tf_serving/
 *.xls
 *.xlsx
 *.csv

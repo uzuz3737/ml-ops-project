@@ -105,6 +105,34 @@ ml-ops-project/
 
 ---
 
+## TensorFlow Serving Monitoring
+
+The Compose stack exports the registered `CreditCardDefaultCatBoost` Production version from MLflow into a TensorFlow SavedModel. The exporter checks prediction parity against the registered CatBoost artifact on 256 validation rows before TensorFlow Serving loads it.
+
+Start the existing MLflow, serving, Prometheus, and Grafana services:
+
+```bash
+docker-compose up --build -d tf-serving prometheus grafana
+```
+
+| Service | URL |
+| :--- | :--- |
+| TensorFlow Serving REST | [http://localhost:8501](http://localhost:8501) |
+| TensorFlow Serving model status | [http://localhost:8501/v1/models/CreditCardDefaultCatBoost](http://localhost:8501/v1/models/CreditCardDefaultCatBoost) |
+| TensorFlow Serving metrics | [http://localhost:8502/monitoring/prometheus/metrics](http://localhost:8502/monitoring/prometheus/metrics) |
+| Prometheus | [http://localhost:9090](http://localhost:9090) |
+| Grafana dashboard | [http://localhost:3000/d/tf-serving-catboost-monitoring/tensorflow-serving-model-monitoring](http://localhost:3000/d/tf-serving-catboost-monitoring/tensorflow-serving-model-monitoring) (`admin` / `admin`) |
+
+Send a prediction. `instances` values must use the 23 raw input fields in this order: `LIMIT_BAL, SEX, EDUCATION, MARRIAGE, AGE, PAY_0, PAY_2, PAY_3, PAY_4, PAY_5, PAY_6, BILL_AMT1..BILL_AMT6, PAY_AMT1..PAY_AMT6`.
+
+```bash
+curl -X POST http://localhost:8501/v1/models/CreditCardDefaultCatBoost:predict \\
+  -H 'Content-Type: application/json' \\
+  -d '{"instances":[[50000,2,2,1,24,2,2,-1,-1,-2,-2,3913,3102,689,0,0,0,0,689,0,0,0,0]]}'
+```
+
+Stop only the monitoring stack with `docker-compose stop tf-serving prometheus grafana`; the complete project remains available through `docker-compose up --build -d`.
+
 ## 🚀 Quickstart Guide
 
 ### Option 1: Full Stack via Docker Compose (Recommended)
@@ -120,6 +148,8 @@ docker compose up --build -d
 | Service | URL | Credentials (if prompted) |
 | :--- | :--- | :--- |
 | **FastAPI Serving** | [http://localhost:8001](http://localhost:8001) (Swagger: `/docs`) | None |
+| **TensorFlow Serving** | [http://localhost:8501](http://localhost:8501) | None |
+| **TensorFlow Serving Metrics** | [http://localhost:8502/monitoring/prometheus/metrics](http://localhost:8502/monitoring/prometheus/metrics) | None |
 | **Airflow UI** | [http://localhost:8080](http://localhost:8080) | `admin` / `admin` |
 | **MLflow Server** | [http://localhost:8000](http://localhost:8000) | None |
 | **Prometheus** | [http://localhost:9090](http://localhost:9090) | None |

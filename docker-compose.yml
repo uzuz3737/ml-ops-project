@@ -135,6 +135,51 @@ services:
       retries: 5
 
   # ----------------------------------------------------
+  # TensorFlow Serving adapter for the registered CatBoost model
+  # ----------------------------------------------------
+  tf-model-exporter:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.tf_exporter
+    container_name: tf-model-exporter
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - TF_SERVING_MODEL_NAME=CreditCardDefaultCatBoost
+      - TF_SERVING_MODEL_ROOT=/models
+    volumes:
+      - ./models/tf_serving:/models
+      - ./config:/app/config:ro
+      - ./data:/app/data:ro
+    depends_on:
+      mlflow:
+        condition: service_healthy
+
+  tf-serving:
+    image: tensorflow/serving:2.15.1
+    container_name: tensorflow-serving
+    command:
+      - --port=8500
+      - --rest_api_port=8501
+      - --model_name=CreditCardDefaultCatBoost
+      - --model_base_path=/models/CreditCardDefaultCatBoost
+      - --monitoring_config_file=/etc/tf-serving/monitoring_config.pbtxt
+    ports:
+      - "8501:8501"
+      - "8502:8501"
+    volumes:
+      - ./models/tf_serving:/models:ro
+      - ./monitoring/tf_serving/monitoring_config.pbtxt:/etc/tf-serving/monitoring_config.pbtxt:ro
+    depends_on:
+      tf-model-exporter:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8501'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
+
+  # ----------------------------------------------------
   # Monitoring: Prometheus
   # ----------------------------------------------------
   prometheus:
@@ -148,7 +193,10 @@ services:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
     depends_on:
-      - fastapi-serving
+      fastapi-serving:
+        condition: service_started
+      tf-serving:
+        condition: service_healthy
 
   # ----------------------------------------------------
   # Monitoring: Grafana Dashboard
@@ -164,6 +212,5 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
     depends_on:
       - prometheus

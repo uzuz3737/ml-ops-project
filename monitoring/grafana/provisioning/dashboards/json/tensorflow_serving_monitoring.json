@@ -1,0 +1,74 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []},
+      "gridPos": {"h": 7, "w": 8, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"expr": "sum(:tensorflow:serving:request_count{model_name=\"CreditCardDefaultCatBoost\"})", "refId": "A"}],
+      "title": "TensorFlow Serving Requests",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "reqps", "color": {"mode": "palette-classic"}}, "overrides": []},
+      "gridPos": {"h": 7, "w": 8, "x": 8, "y": 0},
+      "id": 2,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"expr": "sum by (model_version) (rate({__name__=\":tensorflow:serving:request_count\",model_name=\"CreditCardDefaultCatBoost\"}[1m]))", "legendFormat": "version {{model_version}}", "refId": "A"}],
+      "title": "Request Rate by Model Version",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 5}]}}, "overrides": []},
+      "gridPos": {"h": 7, "w": 8, "x": 16, "y": 0},
+      "id": 3,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"expr": "100 * sum(rate({__name__=\":tensorflow:serving:request_count\",model_name=\"CreditCardDefaultCatBoost\",status!=\"OK\"}[5m])) / clamp_min(sum(rate({__name__=\":tensorflow:serving:request_count\",model_name=\"CreditCardDefaultCatBoost\"}[5m])), 1e-9)", "refId": "A"}],
+      "title": "Request Error Rate",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s", "color": {"mode": "palette-classic"}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 7},
+      "id": 4,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"expr": "histogram_quantile(0.50, sum by (le) (rate({__name__=\":tensorflow:serving:request_latency_bucket\",model_name=\"CreditCardDefaultCatBoost\",API=\"predict\"}[5m]))) / 1e6", "legendFormat": "p50", "refId": "A"}, {"expr": "histogram_quantile(0.95, sum by (le) (rate({__name__=\":tensorflow:serving:request_latency_bucket\",model_name=\"CreditCardDefaultCatBoost\",API=\"predict\"}[5m]))) / 1e6", "legendFormat": "p95", "refId": "B"}, {"expr": "histogram_quantile(0.99, sum by (le) (rate({__name__=\":tensorflow:serving:request_latency_bucket\",model_name=\"CreditCardDefaultCatBoost\",API=\"predict\"}[5m]))) / 1e6", "legendFormat": "p99", "refId": "C"}],
+      "title": "Request Latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 7},
+      "id": 5,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "name"},
+      "targets": [{"expr": "max(up{job=\"tensorflow-serving\"}) or vector(0)", "refId": "A"}],
+      "title": "Model Availability (1 = AVAILABLE)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "palette-classic"}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 7},
+      "id": 6,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"expr": "max by (model_version) (up{job=\"tensorflow-serving\"})", "legendFormat": "version {{model_version}}", "refId": "A"}],
+      "title": "Loaded Model Version",
+      "type": "stat"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 38,
+  "tags": ["mlops", "tensorflow-serving", "catboost", "prometheus"],
+  "time": {"from": "now-30m", "to": "now"},
+  "title": "TensorFlow Serving Model Monitoring",
+  "uid": "tf-serving-catboost-monitoring",
+  "version": 1
+}
