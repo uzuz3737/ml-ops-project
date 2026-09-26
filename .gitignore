@@ -51,6 +51,7 @@ data/raw/
 data/processed/
 data/validation/
 models/saved/
+models/temp/
 *.xls
 *.xlsx
 *.csv

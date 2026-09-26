@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 import numpy as np
-import xgboost as xgb
+from sklearn.ensemble import RandomForestClassifier
 import pytest
 
 from serving.app import app, state
@@ -8,7 +8,7 @@ from serving.app import app, state
 
 @pytest.fixture(autouse=True)
 def mock_serving_model():
-    # Setup a mock trained XGBoost model for API testing
+    # Setup a mock trained Random Forest model for API testing
     # Generate 27 features (original 23 + 4 engineered features)
     from src.features.engineering import prepare_features_and_target
     import pandas as pd
@@ -43,7 +43,7 @@ def mock_serving_model():
     cfg = load_config()
     X, _ = prepare_features_and_target(df, cfg)
     
-    mock_model = xgb.XGBClassifier(n_estimators=3, max_depth=2, random_state=42)
+    mock_model = RandomForestClassifier(n_estimators=10, max_depth=2, random_state=42)
     # Fit on random data with same feature shape
     X_fake = np.random.randn(20, X.shape[1])
     y_fake = np.random.randint(0, 2, size=20)

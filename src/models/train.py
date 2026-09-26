@@ -2,10 +2,11 @@ import os
 import joblib
 import pandas as pd
 import numpy as np
-import xgboost as xgb
 import mlflow
-import mlflow.xgboost
+import mlflow.sklearn
 from mlflow.models.signature import infer_signature
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import RandomizedSearchCV
 from pathlib import Path
 
 from src.utils.config import load_config, get_project_root
@@ -26,8 +27,8 @@ def setup_mlflow(config: dict):
     logger.info(f"MLflow configured with URI: {tracking_uri}, Experiment: {experiment_name}")
 
 
-def train_model(config: dict = None) -> tuple[xgb.XGBClassifier, dict]:
-    """Trains XGBoost model, tracks run in MLflow, and registers production model."""
+def train_model(config: dict = None) -> tuple[RandomForestClassifier, dict]:
+    """Tunes a regularized Random Forest, tracks it, and promotes it in MLflow."""
     if config is None:
         config = load_config()
 
@@ -47,10 +48,10 @@ def train_model(config: dict = None) -> tuple[xgb.XGBClassifier, dict]:
     X_train, y_train = prepare_features_and_target(train_df, config)
     X_val, y_val = prepare_features_and_target(val_df, config)
 
-    # Initialize XGBoost model
     model_params = config["model"]["params"].copy()
-    logger.info(f"Instantiating XGBClassifier with params: {model_params}")
-    model = xgb.XGBClassifier(**model_params)
+    tuning = config["model"].get("tuning", {})
+    logger.info(f"Instantiating RandomForestClassifier with params: {model_params}")
+    base_model = RandomForestClassifier(**model_params)
 
     # Setup MLflow
     try:
@@ -59,20 +60,33 @@ def train_model(config: dict = None) -> tuple[xgb.XGBClassifier, dict]:
         logger.warning(f"Could not connect to MLflow server: {e}. Local file store will be used.")
 
     # Run MLflow Tracking
-    with mlflow.start_run(run_name="xgboost_baseline_run") as run:
+    with mlflow.start_run(run_name="tuned_random_forest_run") as run:
         # Log parameters
         mlflow.log_params(model_params)
         mlflow.log_param("features_count", X_train.shape[1])
         mlflow.log_param("train_samples", X_train.shape[0])
         mlflow.log_param("val_samples", X_val.shape[0])
 
-        logger.info("Fitting XGBoost model...")
-        model.fit(
-            X_train,
-            y_train,
-            eval_set=[(X_train, y_train), (X_val, y_val)],
-            verbose=False,
-        )
+        if tuning.get("enabled", True):
+            logger.info("Tuning Random Forest with stratified cross-validation...")
+            search = RandomizedSearchCV(
+                estimator=base_model,
+                param_distributions=tuning["param_distributions"],
+                n_iter=tuning.get("n_iter", 10),
+                scoring=tuning.get("scoring", "roc_auc"),
+                cv=tuning.get("cv", 3),
+                random_state=model_params.get("random_state", 42),
+                n_jobs=-1,
+                verbose=1,
+                refit=True,
+            )
+            search.fit(X_train, y_train)
+            model = search.best_estimator_
+            mlflow.log_metric("best_cv_roc_auc", float(search.best_score_))
+            mlflow.log_params({f"best_{k}": v for k, v in search.best_params_.items()})
+            logger.info(f"Best Random Forest params: {search.best_params_}")
+        else:
+            model = base_model.fit(X_train, y_train)
 
         # Predictions & Probabilities
         val_pred_prob = model.predict_proba(X_val)[:, 1]
@@ -97,15 +111,15 @@ def train_model(config: dict = None) -> tuple[xgb.XGBClassifier, dict]:
         # Save model locally for fallback serving
         saved_models_dir = root / "models" / "saved"
         saved_models_dir.mkdir(parents=True, exist_ok=True)
-        local_model_path = saved_models_dir / "xgb_model.joblib"
+        local_model_path = saved_models_dir / "random_forest_model.joblib"
         joblib.dump(model, local_model_path)
         logger.info(f"Model saved locally to {local_model_path}")
 
         # Log model to MLflow with signature
         signature = infer_signature(X_train.head(10), model.predict(X_train.head(10)))
-        mlflow.xgboost.log_model(
-            xgb_model=model,
-            artifact_path="xgboost_model",
+        mlflow.sklearn.log_model(
+            sk_model=model,
+            artifact_path="random_forest_model",
             signature=signature,
             input_example=X_train.head(2),
         )
@@ -119,7 +133,7 @@ def train_model(config: dict = None) -> tuple[xgb.XGBClassifier, dict]:
                 register_and_promote_model(
                     run_id=run.info.run_id,
                     model_name=reg_name,
-                    artifact_path="xgboost_model",
+                    artifact_path="random_forest_model",
                     target_stage="Production",
                 )
             except Exception as e:

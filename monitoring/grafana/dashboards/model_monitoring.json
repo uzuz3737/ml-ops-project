@@ -127,7 +127,7 @@
   "refresh": "5s",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["mlops", "xgboost", "serving"],
+  "tags": ["mlops", "random-forest", "serving"],
   "time": {
     "from": "now-30m",
     "to": "now"

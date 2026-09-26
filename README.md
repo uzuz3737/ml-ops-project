@@ -16,7 +16,7 @@ flowchart TD
     subgraph Data & Pipeline Orchestration ["Data & Pipeline Orchestration (Airflow)"]
         A["Raw Data Ingestion\n(UCI Repository / Local)"] --> B["Data Validation\n(TFDV Schema & Anomaly Detection)"]
         B --> C["Feature Engineering\n(Financial Ratios & Delinquency)"]
-        C --> D["Model Training & Tuning\n(XGBoost Classifier)"]
+        C --> D["Model Training & Tuning\n(Random Forest Classifier)"]
     end
 
     subgraph Tracking & Governance ["Experimentation & Governance (MLflow)"]
@@ -40,7 +40,7 @@ flowchart TD
 
 | Component | Tool / Technology | Purpose |
 | :--- | :--- | :--- |
-| **Model Architecture** | [XGBoost](https://xgboost.readthedocs.io/) | Gradient boosted decision trees optimized for tabular financial risk classification |
+| **Model Architecture** | Random Forest | Tuned ensemble of regularized decision trees for robust tabular credit-risk classification |
 | **Version Control** | Git / GitHub | Code and configuration version management |
 | **Data Validation** | [TFDV (TensorFlow Data Validation)](https://www.tensorflow.org/tfx/data_validation/get_started) | Statistics generation, schema inference, skew and anomaly detection |
 | **Experiment Tracking** | [MLflow Tracking](https://mlflow.org/) | Hyperparameter logging, ROC-AUC/PR-AUC curves, and confusion matrix artifacts |
@@ -87,7 +87,7 @@ ml-ops-project/
 │   ├── features/
 │   │   └── engineering.py           # Domain financial features & data cleaners
 │   ├── models/
-│   │   ├── train.py                 # XGBoost training & MLflow tracking
+│   │   ├── train.py                 # Random Forest tuning & MLflow tracking
 │   │   ├── evaluate.py              # ROC-AUC, PR-AUC, Confusion Matrix calculation
 │   │   └── registry.py              # MLflow Model Registry promotion logic
 │   └── utils/
@@ -174,7 +174,7 @@ curl http://localhost:8000/health
   "status": "healthy",
   "model_loaded": true,
   "model_version": "Production-Registry",
-  "model_source": "models:/CreditCardDefaultXGBoost/Production"
+  "model_source": "models:/CreditCardDefaultRandomForest/Production"
 }
 ```
 

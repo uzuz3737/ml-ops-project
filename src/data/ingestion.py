@@ -59,8 +59,12 @@ def load_raw_dataset(project_root: Path) -> pd.DataFrame:
     except Exception as e:
         logger.warning(f"Could not fetch from UCI repo: {e}. Checking local files...")
         
-    local_xls = project_root / "default of credit card clients.xls"
-    if local_xls.exists():
+    local_candidates = [
+        project_root / "default of credit card clients.xls",
+        project_root / "data" / "default of credit card clients.xls",
+    ]
+    local_xls = next((path for path in local_candidates if path.exists()), None)
+    if local_xls is not None:
         logger.info(f"Loading from local Excel: {local_xls}")
         try:
             df = pd.read_excel(local_xls, header=1)
