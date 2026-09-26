@@ -226,6 +226,12 @@ curl http://localhost:8000/metrics
 
 ## 🧪 Testing & CI/CD
 
+### CatBoost comparison run
+
+CatBoost uses the same ingested train/validation/test splits and shared `prepare_features_and_target` feature engineering as XGBoost. Run it with `python -m src.models.train_catboost`. It logs to the separate `credit_card_default_catboost` experiment and registers as `CreditCardDefaultCatBoost` only when validation ROC-AUC reaches the configured 0.70 gate. Each run logs ROC-AUC, PR-AUC, precision, recall, F1, evaluation plots, data checksums, git revision, CatBoost version, and a `pip freeze` environment artifact. Airflow runs the CatBoost and existing XGBoost tasks in parallel after shared ingestion and validation.
+
+To serve the registered CatBoost Production model, set `serving.model_family: "catboost"` in `config/config.yaml`; the default remains XGBoost.
+
 Run all unit and integration tests with coverage:
 
 ```bash

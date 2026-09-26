@@ -23,9 +23,10 @@ def register_and_promote_model(
     model_name: str,
     artifact_path: str = "xgboost_model",
     target_stage: str = "Production",
+    config: dict = None,
 ) -> str:
     """Registers model from run and transitions it to target stage (e.g. Production)."""
-    client = get_mlflow_client()
+    client = get_mlflow_client(config)
     model_uri = f"runs:/{run_id}/{artifact_path}"
 
     logger.info(f"Registering model from {model_uri} as '{model_name}'...")

@@ -6,6 +6,8 @@ import pandas as pd
 import numpy as np
 from fastapi import FastAPI, HTTPException
 import mlflow
+import mlflow.catboost
+import mlflow.xgboost
 
 from src.utils.config import load_config, get_project_root
 from src.utils.logger import get_logger
@@ -38,7 +40,13 @@ state = {
 def load_model(config: dict):
     """Loads model from MLflow Model Registry or local fallback artifact."""
     root = get_project_root()
-    reg_name = config["mlflow"].get("registered_model_name", "CreditCardDefaultXGBoost")
+    family = config.get("serving", {}).get("model_family", "xgboost").lower()
+    is_catboost = family == "catboost"
+    if family not in {"xgboost", "catboost"}:
+        raise ValueError(f"Unsupported model family configured for serving: {family}")
+    model_config = config["catboost_mlflow"] if is_catboost else config["mlflow"]
+    default_name = "CreditCardDefaultCatBoost" if is_catboost else "CreditCardDefaultXGBoost"
+    reg_name = model_config.get("registered_model_name", default_name)
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI", config["mlflow"].get("tracking_uri", "http://localhost:5000"))
 
     # 1. Try MLflow Registry Production Model
@@ -46,7 +54,7 @@ def load_model(config: dict):
         mlflow.set_tracking_uri(tracking_uri)
         model_uri = f"models:/{reg_name}/Production"
         logger.info(f"Attempting to load model from MLflow Registry: {model_uri}")
-        model = mlflow.xgboost.load_model(model_uri)
+        model = (mlflow.catboost.load_model if is_catboost else mlflow.xgboost.load_model)(model_uri)
         state["model"] = model
         state["model_version"] = "Production-Registry"
         state["model_source"] = model_uri
@@ -57,7 +65,11 @@ def load_model(config: dict):
         logger.warning(f"Could not load model from MLflow Registry: {e}. Checking local fallback...")
 
     # 2. Try Local Saved Model
-    fallback_path = root / config["serving"].get("fallback_model_path", "models/saved/xgb_model.joblib")
+    default_fallback = "models/saved/catboost_model.joblib" if is_catboost else "models/saved/xgb_model.joblib"
+    configured_fallback = config["serving"].get("fallback_model_path")
+    if is_catboost and configured_fallback == "models/saved/xgb_model.joblib":
+        configured_fallback = default_fallback
+    fallback_path = root / (configured_fallback or default_fallback)
     if fallback_path.exists():
         logger.info(f"Loading fallback model from: {fallback_path}")
         model = joblib.load(fallback_path)
@@ -84,7 +96,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Credit Card Default Scoring API",
-    description="MLOps XGBoost Inference Service with Prometheus Monitoring",
+    description="MLOps credit default inference with Prometheus monitoring",
     version="1.0.0",
     lifespan=lifespan,
 )

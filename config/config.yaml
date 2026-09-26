@@ -67,7 +67,28 @@ mlflow:
   registered_model_name: "CreditCardDefaultXGBoost"
 
 serving:
+  model_family: "xgboost"
   host: "0.0.0.0"
   port: 8000
   model_source: "models:/CreditCardDefaultXGBoost/Production"
   fallback_model_path: "models/saved/xgb_model.joblib"
+
+catboost_model:
+  name: "catboost_credit_default"
+  algorithm: "CatBoostClassifier"
+  params:
+    iterations: 500
+    depth: 6
+    learning_rate: 0.05
+    loss_function: "Logloss"
+    eval_metric: "AUC"
+    auto_class_weights: "Balanced"
+    random_seed: 42
+    verbose: false
+    allow_writing_files: false
+
+catboost_mlflow:
+  experiment_name: "credit_card_default_catboost"
+  registered_model_name: "CreditCardDefaultCatBoost"
+  artifact_path: "catboost_model"
+  min_roc_auc: 0.70

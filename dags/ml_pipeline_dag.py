@@ -41,6 +41,12 @@ def task_train_model():
     print(f"Model training and MLflow tracking complete. Metrics: {metrics}")
 
 
+def task_train_catboost_model():
+    from src.models.train_catboost import train_catboost
+    model, metrics = train_catboost()
+    print(f"CatBoost training and MLflow tracking complete. Metrics: {metrics}")
+
+
 def task_health_check_service():
     import urllib.request
     import json
@@ -80,10 +86,16 @@ with DAG(
         python_callable=task_train_model,
     )
 
+    catboost_train_step = PythonOperator(
+        task_id="train_catboost_with_mlflow",
+        python_callable=task_train_catboost_model,
+    )
+
     health_check_step = PythonOperator(
         task_id="verify_model_serving_readiness",
         python_callable=task_health_check_service,
     )
 
     # Define DAG task dependencies
-    ingest_step >> validate_step >> train_step >> health_check_step
+    ingest_step >> validate_step >> [train_step, catboost_train_step]
+    [train_step, catboost_train_step] >> health_check_step
