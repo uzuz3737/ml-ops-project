@@ -6,7 +6,6 @@ Orchestrates: Ingestion -> TFDV Validation -> Feature Eng & XGBoost Train -> Eva
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.operators.bash import BashOperator
 
 
 default_args = {
@@ -22,28 +21,36 @@ default_args = {
 
 def task_data_ingestion():
     from src.data.ingestion import ingest_data
+
     train_df, val_df, test_df = ingest_data()
-    print(f"Data ingestion completed: Train={train_df.shape}, Val={val_df.shape}, Test={test_df.shape}")
+    print(
+        f"Data ingestion completed: Train={train_df.shape}, Val={val_df.shape}, Test={test_df.shape}"
+    )
 
 
 def task_data_validation():
     from airflow.exceptions import AirflowFailException
     from src.data.validation import run_validation
+
     is_valid, anomalies = run_validation()
     if not is_valid:
-        raise AirflowFailException(f"Data validation failed; downstream training was blocked: {anomalies}")
+        raise AirflowFailException(
+            f"Data validation failed; downstream training was blocked: {anomalies}"
+        )
     else:
         print("Data validation successfully passed with no anomalies.")
 
 
 def task_train_model():
     from src.models.train import train_model
+
     model, metrics = train_model()
     print(f"Model training and MLflow tracking complete. Metrics: {metrics}")
 
 
 def task_train_catboost_model():
     from src.models.train_catboost import train_catboost
+
     model, metrics = train_catboost()
     print(f"CatBoost training and MLflow tracking complete. Metrics: {metrics}")
 
@@ -55,7 +62,9 @@ def task_health_check_service():
 
     serving_url = os.getenv("SERVING_HEALTH_URL", "http://fastapi-serving:8000/health")
     try:
-        req = urllib.request.Request(serving_url, headers={"User-Agent": "Airflow-Health-Check"})
+        req = urllib.request.Request(
+            serving_url, headers={"User-Agent": "Airflow-Health-Check"}
+        )
         with urllib.request.urlopen(req, timeout=5) as response:
             payload = json.loads(response.read().decode())
             print(f"Serving health status: {payload}")
@@ -104,8 +113,11 @@ with DAG(
 
 def task_monitor_serving():
     from src.models.monitor import monitor_serving
+
     result = monitor_serving()
-    print(f"Serving monitor MLflow run: {result['run_id']}; metrics={result['metrics']}")
+    print(
+        f"Serving monitor MLflow run: {result['run_id']}; metrics={result['metrics']}"
+    )
 
 
 monitoring_dag = DAG(

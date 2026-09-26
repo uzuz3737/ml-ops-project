@@ -70,6 +70,34 @@ features:
     - "PAY_AMT4"
     - "PAY_AMT5"
     - "PAY_AMT6"
+  engineered_cols:
+    - "UTILIZATION_RATE"
+    - "SUM_BILL_3M"
+    - "SUM_PAY_3M"
+    - "PAY_TO_BILL_RATIO"
+    - "MONTHS_DELAYED"
+    - "MAX_DELAY_MONTHS"
+  category_mappings:
+    EDUCATION:
+      0: 4
+      5: 4
+      6: 4
+    MARRIAGE:
+      0: 3
+
+feature_engineering:
+  utilization:
+    bill_column: "BILL_AMT1"
+    limit_column: "LIMIT_BAL"
+    denominator_epsilon: 0.00001
+    clip_min: -1.0
+    clip_max: 5.0
+  recent_months: [1, 2, 3]
+  payment_delay_columns: ["PAY_0", "PAY_2", "PAY_3", "PAY_4", "PAY_5", "PAY_6"]
+  pay_to_bill_ratio:
+    denominator_epsilon: 1.0
+    clip_min: 0.0
+    clip_max: 10.0
 
 model:
   name: "xgboost_credit_default"
@@ -85,6 +113,10 @@ model:
     scale_pos_weight: 3.5  # handle class imbalance (~22% default rate)
     random_state: 42
     n_jobs: -1
+  min_roc_auc: 0.70
+
+evaluation:
+  classification_threshold: 0.5
 
 mlflow:
   tracking_uri: "http://localhost:8000"
@@ -92,10 +124,38 @@ mlflow:
   registered_model_name: "CreditCardDefaultXGBoost"
 
 serving:
-  model_family: "xgboost"
+  model_family: "catboost"
   host: "0.0.0.0"
   port: 8000
   model_source: "models:/CreditCardDefaultXGBoost/Production"
+  prediction_threshold: 0.5
+  tensorflow_model_name: "CreditCardDefaultCatBoost"
+  tensorflow_model_stage: "Production"
+  tensorflow_model_root: "/models"
+  input_features:
+    - "LIMIT_BAL"
+    - "SEX"
+    - "EDUCATION"
+    - "MARRIAGE"
+    - "AGE"
+    - "PAY_0"
+    - "PAY_2"
+    - "PAY_3"
+    - "PAY_4"
+    - "PAY_5"
+    - "PAY_6"
+    - "BILL_AMT1"
+    - "BILL_AMT2"
+    - "BILL_AMT3"
+    - "BILL_AMT4"
+    - "BILL_AMT5"
+    - "BILL_AMT6"
+    - "PAY_AMT1"
+    - "PAY_AMT2"
+    - "PAY_AMT3"
+    - "PAY_AMT4"
+    - "PAY_AMT5"
+    - "PAY_AMT6"
   fallback_model_path: "models/saved/xgb_model.joblib"
   prediction_log_file: "data/monitoring/predictions.jsonl"
   feedback_log_file: "data/monitoring/feedback.jsonl"

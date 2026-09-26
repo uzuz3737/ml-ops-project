@@ -10,12 +10,9 @@ def get_mlflow_client(config: dict = None) -> MlflowClient:
     """Returns configured MlflowClient."""
     if config is None:
         config = load_config()
-    tracking_uri = config["mlflow"].get("tracking_uri", "http://localhost:5000")
-    try:
-        mlflow.set_tracking_uri(tracking_uri)
-    except Exception as e:
-        logger.warning(f"Could not connect to tracking URI {tracking_uri}: {e}. Falling back to default.")
-    return MlflowClient()
+    tracking_uri = config["mlflow"]["tracking_uri"]
+    mlflow.set_tracking_uri(tracking_uri)
+    return MlflowClient(tracking_uri=tracking_uri)
 
 
 def register_and_promote_model(
@@ -32,7 +29,9 @@ def register_and_promote_model(
     logger.info(f"Registering model from {model_uri} as '{model_name}'...")
     model_version = mlflow.register_model(model_uri=model_uri, name=model_name)
 
-    logger.info(f"Transitioning model '{model_name}' version {model_version.version} to {target_stage}...")
+    logger.info(
+        f"Transitioning model '{model_name}' version {model_version.version} to {target_stage}..."
+    )
     client.transition_model_version_stage(
         name=model_name,
         version=model_version.version,
@@ -40,7 +39,9 @@ def register_and_promote_model(
         archive_existing_versions=True,
     )
 
-    logger.info(f"Model {model_name} version {model_version.version} is now in {target_stage}!")
+    logger.info(
+        f"Model {model_name} version {model_version.version} is now in {target_stage}!"
+    )
     return model_version.version
 
 

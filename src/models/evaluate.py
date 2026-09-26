@@ -1,4 +1,3 @@
-import io
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import (
@@ -12,11 +11,16 @@ from sklearn.metrics import (
     ConfusionMatrixDisplay,
     roc_curve,
 )
-from typing import Dict, Any
+from typing import Dict
+from src.utils.config import load_config
 
 
-def compute_metrics(y_true: np.ndarray, y_pred_prob: np.ndarray, threshold: float = 0.5) -> Dict[str, float]:
+def compute_metrics(
+    y_true: np.ndarray, y_pred_prob: np.ndarray, threshold: float = None
+) -> Dict[str, float]:
     """Computes comprehensive classification metrics."""
+    if threshold is None:
+        threshold = load_config()["evaluation"]["classification_threshold"]
     y_pred = (y_pred_prob >= threshold).astype(int)
 
     metrics = {
@@ -30,11 +34,15 @@ def compute_metrics(y_true: np.ndarray, y_pred_prob: np.ndarray, threshold: floa
     return metrics
 
 
-def plot_confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray, save_path: str = None):
+def plot_confusion_matrix(
+    y_true: np.ndarray, y_pred: np.ndarray, save_path: str = None
+):
     """Generates and optionally saves confusion matrix figure."""
     cm = confusion_matrix(y_true, y_pred)
     fig, ax = plt.subplots(figsize=(6, 5))
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["No Default", "Default"])
+    disp = ConfusionMatrixDisplay(
+        confusion_matrix=cm, display_labels=["No Default", "Default"]
+    )
     disp.plot(cmap="Blues", ax=ax, values_format="d")
     plt.title("Confusion Matrix")
     plt.tight_layout()
@@ -49,7 +57,9 @@ def plot_roc_curve(y_true: np.ndarray, y_pred_prob: np.ndarray, save_path: str =
     auc_val = roc_auc_score(y_true, y_pred_prob)
 
     fig, ax = plt.subplots(figsize=(6, 5))
-    ax.plot(fpr, tpr, color="darkorange", lw=2, label=f"ROC curve (AUC = {auc_val:.3f})")
+    ax.plot(
+        fpr, tpr, color="darkorange", lw=2, label=f"ROC curve (AUC = {auc_val:.3f})"
+    )
     ax.plot([0, 1], [0, 1], color="navy", lw=2, linestyle="--")
     ax.set_xlim([0.0, 1.0])
     ax.set_ylim([0.0, 1.05])

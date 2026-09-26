@@ -1,12 +1,10 @@
 import os
 import joblib
 import pandas as pd
-import numpy as np
 import xgboost as xgb
 import mlflow
 import mlflow.xgboost
 from mlflow.models.signature import infer_signature
-from pathlib import Path
 
 from src.utils.config import load_config, get_project_root
 from src.utils.logger import get_logger
@@ -19,11 +17,13 @@ logger = get_logger(__name__)
 
 def setup_mlflow(config: dict):
     """Initializes MLflow tracking URI and experiment."""
-    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", config["mlflow"].get("tracking_uri", "http://localhost:5000"))
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", config["mlflow"]["tracking_uri"])
     mlflow.set_tracking_uri(tracking_uri)
     experiment_name = config["mlflow"]["experiment_name"]
     mlflow.set_experiment(experiment_name)
-    logger.info(f"MLflow configured with URI: {tracking_uri}, Experiment: {experiment_name}")
+    logger.info(
+        f"MLflow configured with URI: {tracking_uri}, Experiment: {experiment_name}"
+    )
 
 
 def train_model(config: dict = None) -> tuple[xgb.XGBClassifier, dict]:
@@ -37,6 +37,7 @@ def train_model(config: dict = None) -> tuple[xgb.XGBClassifier, dict]:
 
     if not train_path.exists():
         from src.data.ingestion import ingest_data
+
         ingest_data(config)
 
     logger.info("Loading processed training and validation sets...")
@@ -56,7 +57,9 @@ def train_model(config: dict = None) -> tuple[xgb.XGBClassifier, dict]:
     try:
         setup_mlflow(config)
     except Exception as e:
-        logger.warning(f"Could not connect to MLflow server: {e}. Local file store will be used.")
+        logger.warning(
+            f"Could not connect to MLflow server: {e}. Local file store will be used."
+        )
 
     # Run MLflow Tracking
     with mlflow.start_run(run_name="xgboost_baseline_run") as run:
@@ -88,7 +91,10 @@ def train_model(config: dict = None) -> tuple[xgb.XGBClassifier, dict]:
         cm_path = temp_dir / "confusion_matrix.png"
         roc_path = temp_dir / "roc_curve.png"
 
-        plot_confusion_matrix(y_val.to_numpy(), (val_pred_prob >= 0.5).astype(int), str(cm_path))
+        threshold = float(config["evaluation"]["classification_threshold"])
+        plot_confusion_matrix(
+            y_val.to_numpy(), (val_pred_prob >= threshold).astype(int), str(cm_path)
+        )
         plot_roc_curve(y_val.to_numpy(), val_pred_prob, str(roc_path))
 
         mlflow.log_artifact(str(cm_path), artifact_path="evaluation_plots")
@@ -111,8 +117,7 @@ def train_model(config: dict = None) -> tuple[xgb.XGBClassifier, dict]:
         )
         logger.info(f"MLflow run completed with run_id: {run.info.run_id}")
 
-        # Model Registry Promotion Criteria (e.g. ROC AUC >= 0.70)
-        min_auc_threshold = 0.70
+        min_auc_threshold = float(config["model"]["min_roc_auc"])
         if metrics["roc_auc"] >= min_auc_threshold:
             reg_name = config["mlflow"]["registered_model_name"]
             try:

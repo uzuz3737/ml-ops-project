@@ -1,9 +1,7 @@
 import os
 import joblib
-from pathlib import Path
 from contextlib import asynccontextmanager
 import pandas as pd
-import numpy as np
 from fastapi import FastAPI, HTTPException
 import mlflow
 import mlflow.catboost
@@ -43,32 +41,47 @@ state = {
 def load_model(config: dict):
     """Loads model from MLflow Model Registry or local fallback artifact."""
     root = get_project_root()
-    family = config.get("serving", {}).get("model_family", "xgboost").lower()
+    family = os.getenv(
+        "SERVING_MODEL_FAMILY",
+        config.get("serving", {}).get("model_family", "xgboost"),
+    ).lower()
     is_catboost = family == "catboost"
     if family not in {"xgboost", "catboost"}:
         raise ValueError(f"Unsupported model family configured for serving: {family}")
     model_config = config["catboost_mlflow"] if is_catboost else config["mlflow"]
-    default_name = "CreditCardDefaultCatBoost" if is_catboost else "CreditCardDefaultXGBoost"
+    default_name = (
+        "CreditCardDefaultCatBoost" if is_catboost else "CreditCardDefaultXGBoost"
+    )
     reg_name = model_config.get("registered_model_name", default_name)
-    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", config["mlflow"].get("tracking_uri", "http://localhost:5000"))
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", config["mlflow"]["tracking_uri"])
 
     # 1. Try MLflow Registry Production Model
     try:
         mlflow.set_tracking_uri(tracking_uri)
         model_uri = f"models:/{reg_name}/Production"
-        logger.info(f"Attempting to load model from MLflow Registry: {model_uri}")
-        model = (mlflow.catboost.load_model if is_catboost else mlflow.xgboost.load_model)(model_uri)
+        logger.info("Attempting to load model from MLflow Registry: %s", model_uri)
+        model = (
+            mlflow.catboost.load_model if is_catboost else mlflow.xgboost.load_model
+        )(model_uri)
         state["model"] = model
         state["model_version"] = "Production-Registry"
         state["model_source"] = model_uri
-        ACTIVE_MODEL_VERSION.labels(model_name=reg_name, version="Production", source="mlflow_registry").set(1)
+        ACTIVE_MODEL_VERSION.labels(
+            model_name=reg_name, version="Production", source="mlflow_registry"
+        ).set(1)
         logger.info("Successfully loaded model from MLflow Registry.")
         return
     except Exception as e:
-        logger.warning(f"Could not load model from MLflow Registry: {e}. Checking local fallback...")
+        logger.warning(
+            f"Could not load model from MLflow Registry: {e}. Checking local fallback..."
+        )
 
     # 2. Try Local Saved Model
-    default_fallback = "models/saved/catboost_model.joblib" if is_catboost else "models/saved/xgb_model.joblib"
+    default_fallback = (
+        "models/saved/catboost_model.joblib"
+        if is_catboost
+        else "models/saved/xgb_model.joblib"
+    )
     configured_fallback = config["serving"].get("fallback_model_path")
     if is_catboost and configured_fallback == "models/saved/xgb_model.joblib":
         configured_fallback = default_fallback
@@ -79,7 +92,9 @@ def load_model(config: dict):
         state["model"] = model
         state["model_version"] = "v1-local-joblib"
         state["model_source"] = str(fallback_path)
-        ACTIVE_MODEL_VERSION.labels(model_name=reg_name, version="local-joblib", source="filesystem").set(1)
+        ACTIVE_MODEL_VERSION.labels(
+            model_name=reg_name, version="local-joblib", source="filesystem"
+        ).set(1)
         logger.info("Successfully loaded fallback model.")
         return
 
@@ -142,13 +157,16 @@ def predict(customer: CustomerFeatures):
 
         # Predict
         prob = float(state["model"].predict_proba(X)[:, 1][0])
-        pred = int(prob >= 0.5)
+        threshold = float(state["config"]["serving"]["prediction_threshold"])
+        pred = int(prob >= threshold)
 
         # Update Prometheus Metrics
         MODEL_PREDICTIONS_TOTAL.labels(prediction_class=str(pred)).inc()
         PREDICTION_PROBABILITY_HISTOGRAM.observe(prob)
         try:
-            prediction_id = record_prediction(input_dict, prob, pred, state["model_version"], state["config"])
+            prediction_id = record_prediction(
+                input_dict, prob, pred, state["model_version"], state["config"]
+            )
         except OSError:
             prediction_id = None
             logger.exception("Could not persist prediction event for MLflow monitoring")
@@ -176,7 +194,8 @@ def predict_batch(payload: BatchCustomerFeatures):
 
         X, _ = prepare_features_and_target(df, state["config"])
         probs = state["model"].predict_proba(X)[:, 1]
-        preds = (probs >= 0.5).astype(int)
+        threshold = float(state["config"]["serving"]["prediction_threshold"])
+        preds = (probs >= threshold).astype(int)
 
         results = []
         for customer, p, prob in zip(raw_list, preds, probs):
@@ -186,11 +205,17 @@ def predict_batch(payload: BatchCustomerFeatures):
             PREDICTION_PROBABILITY_HISTOGRAM.observe(prob_float)
             try:
                 prediction_id = record_prediction(
-                    customer, prob_float, pred_int, state["model_version"], state["config"]
+                    customer,
+                    prob_float,
+                    pred_int,
+                    state["model_version"],
+                    state["config"],
                 )
             except OSError:
                 prediction_id = None
-                logger.exception("Could not persist batch prediction event for MLflow monitoring")
+                logger.exception(
+                    "Could not persist batch prediction event for MLflow monitoring"
+                )
             results.append(
                 SinglePredictionResponse(
                     default_prediction=pred_int,
@@ -214,7 +239,9 @@ def predict_batch(payload: BatchCustomerFeatures):
 def submit_prediction_feedback(payload: PredictionFeedbackRequest):
     """Accept the delayed ground-truth label associated with a prediction event."""
     if state["config"] is None:
-        raise HTTPException(status_code=503, detail="Service configuration is not loaded yet.")
+        raise HTTPException(
+            status_code=503, detail="Service configuration is not loaded yet."
+        )
     try:
         record_feedback(payload.prediction_id, payload.actual_default, state["config"])
     except ValueError as exc:
@@ -222,10 +249,15 @@ def submit_prediction_feedback(payload: PredictionFeedbackRequest):
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     except OSError as exc:
         logger.exception("Could not persist prediction feedback")
-        raise HTTPException(status_code=500, detail="Could not persist prediction feedback") from exc
-    return PredictionFeedbackResponse(status="recorded", prediction_id=payload.prediction_id)
+        raise HTTPException(
+            status_code=500, detail="Could not persist prediction feedback"
+        ) from exc
+    return PredictionFeedbackResponse(
+        status="recorded", prediction_id=payload.prediction_id
+    )
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("serving.app:app", host="0.0.0.0", port=8000, reload=True)

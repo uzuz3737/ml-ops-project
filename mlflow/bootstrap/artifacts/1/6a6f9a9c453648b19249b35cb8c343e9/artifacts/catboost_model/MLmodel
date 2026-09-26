@@ -1,0 +1,47 @@
+artifact_path: catboost_model
+flavors:
+  catboost:
+    catboost_version: 1.2.10
+    code: null
+    data: model.cb
+    model_type: CatBoostClassifier
+    save_format: cbm
+  python_function:
+    data: model.cb
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.catboost
+    python_version: 3.11.9
+mlflow_version: 2.10.0
+model_size_bytes: 408410
+model_uuid: b85d9bb02b984eaf8ffe3650389fb3f4
+run_id: 6a6f9a9c453648b19249b35cb8c343e9
+saved_input_example_info:
+  artifact_path: input_example.json
+  pandas_orient: split
+  type: dataframe
+signature:
+  inputs: '[{"type": "long", "name": "LIMIT_BAL", "required": true}, {"type": "long",
+    "name": "SEX", "required": true}, {"type": "long", "name": "EDUCATION", "required":
+    true}, {"type": "long", "name": "MARRIAGE", "required": true}, {"type": "long",
+    "name": "AGE", "required": true}, {"type": "long", "name": "PAY_0", "required":
+    true}, {"type": "long", "name": "PAY_2", "required": true}, {"type": "long", "name":
+    "PAY_3", "required": true}, {"type": "long", "name": "PAY_4", "required": true},
+    {"type": "long", "name": "PAY_5", "required": true}, {"type": "long", "name":
+    "PAY_6", "required": true}, {"type": "long", "name": "BILL_AMT1", "required":
+    true}, {"type": "long", "name": "BILL_AMT2", "required": true}, {"type": "long",
+    "name": "BILL_AMT3", "required": true}, {"type": "long", "name": "BILL_AMT4",
+    "required": true}, {"type": "long", "name": "BILL_AMT5", "required": true}, {"type":
+    "long", "name": "BILL_AMT6", "required": true}, {"type": "long", "name": "PAY_AMT1",
+    "required": true}, {"type": "long", "name": "PAY_AMT2", "required": true}, {"type":
+    "long", "name": "PAY_AMT3", "required": true}, {"type": "long", "name": "PAY_AMT4",
+    "required": true}, {"type": "long", "name": "PAY_AMT5", "required": true}, {"type":
+    "long", "name": "PAY_AMT6", "required": true}, {"type": "double", "name": "UTILIZATION_RATE",
+    "required": true}, {"type": "long", "name": "SUM_BILL_3M", "required": true},
+    {"type": "long", "name": "SUM_PAY_3M", "required": true}, {"type": "double", "name":
+    "PAY_TO_BILL_RATIO", "required": true}, {"type": "long", "name": "MONTHS_DELAYED",
+    "required": true}, {"type": "long", "name": "MAX_DELAY_MONTHS", "required": true}]'
+  outputs: '[{"type": "tensor", "tensor-spec": {"dtype": "int64", "shape": [-1]}}]'
+  params: null
+utc_time_created: '2026-09-26 13:35:06.844873'

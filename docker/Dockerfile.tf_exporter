@@ -6,10 +6,11 @@ WORKDIR /app
 RUN pip install --no-cache-dir \
     --ignore-installed blinker \
     "mlflow==2.10.0" \
-    "sqlalchemy>=1.4,<2.1" \
+    "SQLAlchemy==2.0.54" \
     "catboost==1.2.10" \
-    "pandas>=2.0,<3.0" \
-    "pyarrow>=15,<16"
+    "pandas==2.3.3" \
+    "pyarrow==15.0.2" \
+    "protobuf==4.23.4"
 
 COPY serving/export_catboost_tf_savedmodel.py /app/serving/export_catboost_tf_savedmodel.py
 COPY src/features/ /app/src/features/

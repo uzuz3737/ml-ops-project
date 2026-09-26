@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 import pandas as pd
 import numpy as np
 from src.utils.config import load_config, get_project_root
@@ -176,11 +175,14 @@ def run_validation(config: dict = None) -> bool:
         test_df = pd.read_parquet(test_path)
 
     try:
-        import tensorflow_data_validation
-        return validate_with_tfdv(train_df, test_df, config)
+        import tensorflow_data_validation as tfdv
     except ImportError:
         logger.info("TFDV not installed in current environment. Using statistical schema validator.")
         return validate_with_fallback(train_df, test_df, config)
+    if not hasattr(tfdv, "generate_statistics_from_dataframe"):
+        logger.warning("TFDV lacks its dataframe API; using the statistical schema validator.")
+        return validate_with_fallback(train_df, test_df, config)
+    return validate_with_tfdv(train_df, test_df, config)
 
 
 if __name__ == "__main__":

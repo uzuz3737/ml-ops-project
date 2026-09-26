@@ -30,18 +30,19 @@ services:
   mlflow:
     image: ghcr.io/mlflow/mlflow:v2.10.0
     container_name: mlflow-server
+    entrypoint: ["/bin/sh", "-c"]
     ports:
       - "8000:5000"
-    command: >
-      mlflow server
-      --backend-store-uri sqlite:////mlflow/mlflow.db
-      --serve-artifacts
-      --artifacts-destination /mlartifacts
-      --host 0.0.0.0
-      --port 5000
+    command: |
+      if [ ! -f /mlflow/mlflow.db ]; then
+        cp /mlflow-seed/mlflow.db /mlflow/mlflow.db
+        cp -a /mlflow-seed/artifacts/. /mlartifacts/
+      fi
+      exec mlflow server --backend-store-uri sqlite:////mlflow/mlflow.db --serve-artifacts --artifacts-destination /mlartifacts --host 0.0.0.0 --port 5000
     volumes:
       - ./mlruns:/mlflow
       - ./mlartifacts:/mlartifacts
+      - ./mlflow/bootstrap:/mlflow-seed:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/', timeout=5)"]
       interval: 10s
@@ -52,7 +53,7 @@ services:
   # Airflow Metadata DB
   # ----------------------------------------------------
   postgres:
-    image: postgres:15-alpine
+    image: postgres:15.12-alpine3.21
     container_name: airflow-postgres
     environment:
       - POSTGRES_USER=airflow
@@ -119,12 +120,13 @@ services:
     container_name: fastapi-serving
     ports:
       - "8001:8000"
-    environment:
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
     volumes:
       - ./models:/app/models
       - ./config:/app/config
       - ./data:/app/data
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - SERVING_MODEL_FAMILY=${SERVING_MODEL_FAMILY:-catboost}
     depends_on:
       mlflow:
         condition: service_started
@@ -144,6 +146,7 @@ services:
     container_name: tf-model-exporter
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - SERVING_MODEL_FAMILY=${SERVING_MODEL_FAMILY:-catboost}
       - TF_SERVING_MODEL_NAME=CreditCardDefaultCatBoost
       - TF_SERVING_MODEL_ROOT=/models
     volumes:

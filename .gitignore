@@ -34,6 +34,7 @@ env/
 # MLflow tracking
 mlruns/
 mlartifacts/
+!mlflow/bootstrap/
 
 # Airflow logs and database
 logs/*
@@ -52,7 +53,6 @@ data/processed/
 data/validation/
 data/monitoring/
 models/saved/
-models/tf_serving/
 *.xls
 *.xlsx
 *.csv

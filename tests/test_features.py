@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 from src.features.engineering import clean_categories, engineer_features, prepare_features_and_target
 
 

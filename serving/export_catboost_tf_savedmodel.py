@@ -1,10 +1,7 @@
-"""Export the registered CatBoost classifier as an equivalent TF SavedModel.
+"""Export a registered CatBoost model to the TensorFlow Serving format."""
 
-TensorFlow Serving loads SavedModel graphs, not CatBoost binaries. This exporter
-turns the existing CatBoost oblivious trees into TensorFlow graph operations,
-and keeps the project's raw-feature engineering inside the serving signature.
-"""
 import json
+import logging
 import os
 import tempfile
 from pathlib import Path
@@ -19,91 +16,126 @@ from mlflow.tracking import MlflowClient
 from src.features.engineering import prepare_features_and_target
 from src.utils.config import get_project_root, load_config
 
-
-RAW_FEATURES = [
-    "LIMIT_BAL", "SEX", "EDUCATION", "MARRIAGE", "AGE", "PAY_0", "PAY_2",
-    "PAY_3", "PAY_4", "PAY_5", "PAY_6", "BILL_AMT1", "BILL_AMT2",
-    "BILL_AMT3", "BILL_AMT4", "BILL_AMT5", "BILL_AMT6", "PAY_AMT1",
-    "PAY_AMT2", "PAY_AMT3", "PAY_AMT4", "PAY_AMT5", "PAY_AMT6",
-]
-ENGINEERED_FEATURES = [
-    "UTILIZATION_RATE", "SUM_BILL_3M", "SUM_PAY_3M", "PAY_TO_BILL_RATIO",
-    "MONTHS_DELAYED", "MAX_DELAY_MONTHS",
-]
+logger = logging.getLogger(__name__)
 
 
 class CatBoostSavedModel(tf.Module):
-    """TensorFlow graph that evaluates CatBoost trees and returns class scores."""
+    """TensorFlow graph that evaluates CatBoost oblivious trees."""
 
-    def __init__(self, model_json: dict):
+    def __init__(
+        self,
+        model_json: dict,
+        raw_features: list[str],
+        engineered_features: list[str],
+        config: dict,
+    ) -> None:
         super().__init__()
+        self.raw_features = raw_features
+        self.engineered_features = engineered_features
+        self.raw_feature_index = {
+            name: index for index, name in enumerate(raw_features)
+        }
+        self.feature_config = config["feature_engineering"]
+        self.category_mappings = config["features"].get("category_mappings", {})
+
         float_features = sorted(
             model_json["features_info"]["float_features"],
             key=lambda feature: feature["flat_feature_index"],
         )
         self.feature_names = [feature["feature_id"] for feature in float_features]
-        expected_features = RAW_FEATURES + ENGINEERED_FEATURES
+        expected_features = raw_features + engineered_features
         if self.feature_names != expected_features:
             raise ValueError(
-                "CatBoost feature order differs from the shared feature pipeline: "
+                "CatBoost feature order differs from the configured serving pipeline: "
                 f"expected {expected_features}, got {self.feature_names}"
             )
 
         self.trees = model_json["oblivious_trees"]
         for tree_number, tree in enumerate(self.trees):
-            if any(split.get("split_type") != "FloatFeature" for split in tree["splits"]):
-                raise ValueError(f"CatBoost tree {tree_number} contains a non-numeric split")
+            if any(
+                split.get("split_type") != "FloatFeature" for split in tree["splits"]
+            ):
+                raise ValueError(
+                    f"CatBoost tree {tree_number} contains a non-numeric split"
+                )
 
         self.scale = float(model_json["scale_and_bias"][0])
         self.bias = float(model_json["scale_and_bias"][1][0])
         self.serve = tf.function(
             self._serve,
             input_signature=[
-                tf.TensorSpec(shape=[None, len(RAW_FEATURES)], dtype=tf.float64, name="raw_features")
+                tf.TensorSpec(
+                    shape=[None, len(raw_features)],
+                    dtype=tf.float64,
+                    name="raw_features",
+                )
             ],
         )
 
-    @staticmethod
-    def engineer_features(raw_features: tf.Tensor) -> tf.Tensor:
-        """Match src.features.engineering.engineer_features for each row."""
-        columns = [raw_features[:, index] for index in range(len(RAW_FEATURES))]
+    def _sum_columns(self, columns: list[tf.Tensor], names: list[str]) -> tf.Tensor:
+        values = [columns[self.raw_feature_index[name]] for name in names]
+        total = values[0]
+        for value in values[1:]:
+            total = total + value
+        return total
 
-        # Match the existing category cleanup: undocumented values map to "other".
-        education = columns[2]
-        education_is_other = tf.logical_or(
-            tf.equal(education, tf.constant(0.0, dtype=tf.float64)),
-            tf.logical_or(
-                tf.equal(education, tf.constant(5.0, dtype=tf.float64)),
-                tf.equal(education, tf.constant(6.0, dtype=tf.float64)),
-            ),
-        )
-        columns[2] = tf.where(
-            education_is_other, tf.constant(4.0, dtype=tf.float64), education
-        )
-        columns[3] = tf.where(
-            tf.equal(columns[3], tf.constant(0.0, dtype=tf.float64)),
-            tf.constant(3.0, dtype=tf.float64),
-            columns[3],
-        )
+    def engineer_features(self, raw_features: tf.Tensor) -> tf.Tensor:
+        """Mirror the configured shared feature engineering in the serving graph."""
+        columns = [raw_features[:, index] for index in range(len(self.raw_features))]
 
+        for name, mapping in self.category_mappings.items():
+            index = self.raw_feature_index[name]
+            for source, target in mapping.items():
+                columns[index] = tf.where(
+                    tf.equal(
+                        columns[index], tf.constant(float(source), dtype=tf.float64)
+                    ),
+                    tf.constant(float(target), dtype=tf.float64),
+                    columns[index],
+                )
+
+        utilization_config = self.feature_config["utilization"]
         utilization = tf.clip_by_value(
-            columns[11] / (columns[0] + 1e-5), -1.0, 5.0
+            columns[self.raw_feature_index[utilization_config["bill_column"]]]
+            / (
+                columns[self.raw_feature_index[utilization_config["limit_column"]]]
+                + utilization_config["denominator_epsilon"]
+            ),
+            utilization_config["clip_min"],
+            utilization_config["clip_max"],
         )
-        sum_bill_3m = columns[11] + columns[12] + columns[13]
-        sum_pay_3m = columns[17] + columns[18] + columns[19]
-        pay_to_bill = tf.clip_by_value(
-            sum_pay_3m / (tf.abs(sum_bill_3m) + 1.0), 0.0, 10.0
+
+        months = self.feature_config["recent_months"]
+        sum_bill = self._sum_columns(columns, [f"BILL_AMT{month}" for month in months])
+        sum_pay = self._sum_columns(columns, [f"PAY_AMT{month}" for month in months])
+        ratio_config = self.feature_config["pay_to_bill_ratio"]
+        pay_to_bill_ratio = tf.clip_by_value(
+            sum_pay / (tf.abs(sum_bill) + ratio_config["denominator_epsilon"]),
+            ratio_config["clip_min"],
+            ratio_config["clip_max"],
         )
+
         payment_delays = tf.stack(
-            [columns[index] for index in (5, 6, 7, 8, 9, 10)], axis=1
+            [
+                columns[self.raw_feature_index[name]]
+                for name in self.feature_config["payment_delay_columns"]
+            ],
+            axis=1,
         )
         months_delayed = tf.reduce_sum(
             tf.cast(payment_delays > 0.0, tf.float64), axis=1
         )
         max_delay_months = tf.reduce_max(payment_delays, axis=1)
+        engineered_values = {
+            "UTILIZATION_RATE": utilization,
+            "SUM_BILL_3M": sum_bill,
+            "SUM_PAY_3M": sum_pay,
+            "PAY_TO_BILL_RATIO": pay_to_bill_ratio,
+            "MONTHS_DELAYED": months_delayed,
+            "MAX_DELAY_MONTHS": max_delay_months,
+        }
         engineered = tf.stack(
-            [utilization, sum_bill_3m, sum_pay_3m, pay_to_bill, months_delayed, max_delay_months],
-            axis=1,
+            [engineered_values[name] for name in self.engineered_features], axis=1
         )
         return tf.concat([tf.stack(columns, axis=1), engineered], axis=1)
 
@@ -114,10 +146,12 @@ class CatBoostSavedModel(tf.Module):
 
         for tree in self.trees:
             leaf_indices = tf.zeros([row_count], dtype=tf.int32)
-            # CatBoost uses split order as the low-to-high bit order in leaf index.
+            # CatBoost stores split order as the low-to-high leaf-index bit order.
             for split_index, split in enumerate(tree["splits"]):
                 feature = features[:, split["float_feature_index"]]
-                crossed_border = feature > tf.constant(split["border"], dtype=tf.float64)
+                crossed_border = feature > tf.constant(
+                    split["border"], dtype=tf.float64
+                )
                 leaf_indices += tf.cast(crossed_border, tf.int32) * (1 << split_index)
 
             leaves = tf.constant(tree["leaf_values"], dtype=tf.float64)
@@ -131,46 +165,97 @@ class CatBoostSavedModel(tf.Module):
         return {"probabilities": class_probabilities}
 
 
+def _production_version(client: MlflowClient, model_name: str, stage: str):
+    """Return the highest registered version currently in the configured stage."""
+    versions = client.get_latest_versions(model_name, stages=[stage])
+    if not versions:
+        raise RuntimeError(f"No {stage} model found in MLflow Registry: {model_name}")
+    return max(versions, key=lambda version: int(version.version))
+
+
+def _existing_export_matches(version_path: Path, model_name: str, version: str) -> bool:
+    """Reuse an already validated committed export for the same registry version."""
+    metadata_path = version_path.parent / "export_metadata.json"
+    saved_model_path = version_path / "saved_model.pb"
+    if not saved_model_path.is_file() or not metadata_path.is_file():
+        return False
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        logger.warning(
+            "Could not read SavedModel metadata at %s; exporting afresh", metadata_path
+        )
+        return False
+    return (
+        metadata.get("model_name") == model_name
+        and str(metadata.get("mlflow_model_version")) == str(version)
+        and int(metadata.get("validated_rows", 0)) > 0
+    )
+
+
 def main() -> None:
     config = load_config()
-    model_config = config["catboost_mlflow"]
-    model_name = os.getenv("TF_SERVING_MODEL_NAME", model_config["registered_model_name"])
-    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
-    output_root = Path(os.getenv("TF_SERVING_MODEL_ROOT", "/models"))
+    serving_config = config["serving"]
+    model_name = os.getenv(
+        "TF_SERVING_MODEL_NAME", serving_config["tensorflow_model_name"]
+    )
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", config["mlflow"]["tracking_uri"])
+    output_root = Path(
+        os.getenv("TF_SERVING_MODEL_ROOT", serving_config["tensorflow_model_root"])
+    )
+    registry_stage = serving_config["tensorflow_model_stage"]
     mlflow.set_tracking_uri(tracking_uri)
 
     client = MlflowClient(tracking_uri=tracking_uri)
-    production_versions = client.get_latest_versions(model_name, stages=["Production"])
-    if not production_versions:
-        raise RuntimeError(f"No Production model found in MLflow Registry: {model_name}")
-    registered_version = max(production_versions, key=lambda version: int(version.version))
+    registered_version = _production_version(client, model_name, registry_stage)
+    version_path = output_root / model_name / str(registered_version.version)
+    if _existing_export_matches(version_path, model_name, registered_version.version):
+        logger.info(
+            "Reusing parity-checked SavedModel %s version %s at %s",
+            model_name,
+            registered_version.version,
+            version_path,
+        )
+        return
+
     model_uri = f"models:/{model_name}/{registered_version.version}"
     catboost_model = mlflow.catboost.load_model(model_uri)
-
     with tempfile.TemporaryDirectory() as temporary_directory:
         json_path = Path(temporary_directory) / "catboost_model.json"
         catboost_model.save_model(str(json_path), format="json")
         model_json = json.loads(json_path.read_text(encoding="utf-8"))
 
-    saved_model = CatBoostSavedModel(model_json)
+    raw_features = list(serving_config["input_features"])
+    engineered_features = list(config["features"]["engineered_cols"])
+    saved_model = CatBoostSavedModel(
+        model_json, raw_features, engineered_features, config
+    )
 
-    # Compare against the production CatBoost artifact using the shared pipeline.
     root = get_project_root()
     validation_path = root / config["data"]["val_data_file"]
-    if validation_path.is_file():
-        validation_data = pd.read_parquet(validation_path).head(256)
-        expected_features, _ = prepare_features_and_target(validation_data, config)
-        model_inputs = validation_data[RAW_FEATURES].to_numpy(dtype=np.float64)
-        graph_probabilities = saved_model.serve(tf.convert_to_tensor(model_inputs))["probabilities"].numpy()[:, 1]
-        reference_probabilities = catboost_model.predict_proba(expected_features)[:, 1]
-        max_error = float(np.max(np.abs(graph_probabilities - reference_probabilities)))
-        if max_error > 1e-10:
-            raise RuntimeError(f"SavedModel parity check failed; max probability error={max_error}")
-        print(f"CatBoost-to-TensorFlow parity passed for {len(model_inputs)} rows (max error={max_error:.3g})")
-    else:
-        raise FileNotFoundError(f"Validation split is required to check export parity: {validation_path}")
+    if not validation_path.is_file():
+        raise FileNotFoundError(
+            f"Validation split is required to check export parity: {validation_path}"
+        )
 
-    version_path = output_root / model_name / str(registered_version.version)
+    validation_data = pd.read_parquet(validation_path).head(256)
+    expected_features, _ = prepare_features_and_target(validation_data, config)
+    model_inputs = validation_data[raw_features].to_numpy(dtype=np.float64)
+    graph_probabilities = saved_model.serve(tf.convert_to_tensor(model_inputs))[
+        "probabilities"
+    ].numpy()[:, 1]
+    reference_probabilities = catboost_model.predict_proba(expected_features)[:, 1]
+    max_error = float(np.max(np.abs(graph_probabilities - reference_probabilities)))
+    if max_error > 1e-10:
+        raise RuntimeError(
+            f"SavedModel parity check failed; max probability error={max_error}"
+        )
+    logger.info(
+        "CatBoost-to-TensorFlow parity passed for %d rows (max probability error=%.3g)",
+        len(model_inputs),
+        max_error,
+    )
+
     version_path.parent.mkdir(parents=True, exist_ok=True)
     tf.saved_model.save(
         saved_model,
@@ -182,15 +267,16 @@ def main() -> None:
         "mlflow_model_version": registered_version.version,
         "mlflow_run_id": registered_version.run_id,
         "feature_names": saved_model.feature_names,
-        "input_features": RAW_FEATURES,
+        "input_features": raw_features,
         "output": "probabilities with class order [no_default, default]",
-        "validated_rows": int(len(validation_data)),
+        "validated_rows": len(validation_data),
+        "max_probability_error": max_error,
         "tensorflow_version": tf.__version__,
     }
     (version_path.parent / "export_metadata.json").write_text(
         json.dumps(metadata, indent=2), encoding="utf-8"
     )
-    print(f"Exported {model_uri} to {version_path}")
+    logger.info("Exported %s to %s", model_uri, version_path)
 
 
 if __name__ == "__main__":

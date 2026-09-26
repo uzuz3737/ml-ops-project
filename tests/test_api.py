@@ -1,120 +1,94 @@
-from fastapi.testclient import TestClient
+"""FastAPI contract tests using a fixed predictor, with no estimator fitting."""
+
 import numpy as np
-import xgboost as xgb
 import pytest
+from fastapi.testclient import TestClient
 
 from serving.app import app, state
+from src.utils.config import load_config
+
+
+CUSTOMER = {
+    "LIMIT_BAL": 20000.0,
+    "SEX": 2,
+    "EDUCATION": 2,
+    "MARRIAGE": 1,
+    "AGE": 24,
+    "PAY_0": 2,
+    "PAY_2": 2,
+    "PAY_3": -1,
+    "PAY_4": -1,
+    "PAY_5": -2,
+    "PAY_6": -2,
+    "BILL_AMT1": 3913.0,
+    "BILL_AMT2": 3102.0,
+    "BILL_AMT3": 689.0,
+    "BILL_AMT4": 0.0,
+    "BILL_AMT5": 0.0,
+    "BILL_AMT6": 0.0,
+    "PAY_AMT1": 0.0,
+    "PAY_AMT2": 689.0,
+    "PAY_AMT3": 0.0,
+    "PAY_AMT4": 0.0,
+    "PAY_AMT5": 0.0,
+    "PAY_AMT6": 0.0,
+}
+
+
+class FixedProbabilityModel:
+    """Return stable class probabilities without fitting a model in tests."""
+
+    def predict_proba(self, features):
+        return np.tile(np.array([[0.25, 0.75]]), (len(features), 1))
 
 
 @pytest.fixture(autouse=True)
 def mock_serving_model(tmp_path, monkeypatch):
-    # Setup a mock trained XGBoost model for API testing
-    # Generate 27 features (original 23 + 4 engineered features)
-    from src.features.engineering import prepare_features_and_target
-    import pandas as pd
-    
-    dummy_input = {
-        "LIMIT_BAL": 20000.0,
-        "SEX": 2,
-        "EDUCATION": 2,
-        "MARRIAGE": 1,
-        "AGE": 24,
-        "PAY_0": 2,
-        "PAY_2": 2,
-        "PAY_3": -1,
-        "PAY_4": -1,
-        "PAY_5": -2,
-        "PAY_6": -2,
-        "BILL_AMT1": 3913.0,
-        "BILL_AMT2": 3102.0,
-        "BILL_AMT3": 689.0,
-        "BILL_AMT4": 0.0,
-        "BILL_AMT5": 0.0,
-        "BILL_AMT6": 0.0,
-        "PAY_AMT1": 0.0,
-        "PAY_AMT2": 689.0,
-        "PAY_AMT3": 0.0,
-        "PAY_AMT4": 0.0,
-        "PAY_AMT5": 0.0,
-        "PAY_AMT6": 0.0,
-    }
-    df = pd.DataFrame([dummy_input])
-    from src.utils.config import load_config
     import serving.monitoring as serving_monitoring
-    cfg = load_config()
+
     monkeypatch.setattr(serving_monitoring, "get_project_root", lambda: tmp_path)
-    X, _ = prepare_features_and_target(df, cfg)
-    
-    mock_model = xgb.XGBClassifier(n_estimators=3, max_depth=2, random_state=42)
-    # Fit on random data with same feature shape
-    X_fake = np.random.randn(20, X.shape[1])
-    y_fake = np.random.randint(0, 2, size=20)
-    mock_model.fit(X_fake, y_fake)
-    
-    state["model"] = mock_model
-    state["model_version"] = "test-mock-v1"
-    state["model_source"] = "mock"
-    state["config"] = cfg
+    state.update(
+        model=FixedProbabilityModel(),
+        model_version="test-fixed-v1",
+        model_source="test-fixture",
+        config=load_config(),
+    )
 
 
 def test_health_endpoint():
-    client = TestClient(app)
-    response = client.get("/health")
+    response = TestClient(app).get("/health")
+
     assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "healthy"
-    assert data["model_loaded"] is True
+    assert response.json()["model_loaded"] is True
 
 
 def test_metrics_endpoint():
-    client = TestClient(app)
-    response = client.get("/metrics")
+    response = TestClient(app).get("/metrics")
+
     assert response.status_code == 200
-    assert "http_requests_total" in response.text or "python_gc_objects_collected_total" in response.text
+    assert (
+        "http_requests_total" in response.text
+        or "python_gc_objects_collected_total" in response.text
+    )
 
 
 def test_single_predict_endpoint():
     client = TestClient(app)
-    payload = {
-        "LIMIT_BAL": 20000.0,
-        "SEX": 2,
-        "EDUCATION": 2,
-        "MARRIAGE": 1,
-        "AGE": 24,
-        "PAY_0": 2,
-        "PAY_2": 2,
-        "PAY_3": -1,
-        "PAY_4": -1,
-        "PAY_5": -2,
-        "PAY_6": -2,
-        "BILL_AMT1": 3913.0,
-        "BILL_AMT2": 3102.0,
-        "BILL_AMT3": 689.0,
-        "BILL_AMT4": 0.0,
-        "BILL_AMT5": 0.0,
-        "BILL_AMT6": 0.0,
-        "PAY_AMT1": 0.0,
-        "PAY_AMT2": 689.0,
-        "PAY_AMT3": 0.0,
-        "PAY_AMT4": 0.0,
-        "PAY_AMT5": 0.0,
-        "PAY_AMT6": 0.0,
-    }
-    response = client.post("/predict", json=payload)
+    response = client.post("/predict", json=CUSTOMER)
+
     assert response.status_code == 200
-    res = response.json()
-    assert "default_prediction" in res
-    assert "default_probability" in res
-    assert res["default_prediction"] in [0, 1]
-    assert res["prediction_id"]
+    prediction = response.json()
+    assert prediction["default_prediction"] == 1
+    assert prediction["default_probability"] == 0.75
+    assert prediction["prediction_id"]
 
     feedback = client.post(
         "/feedback",
-        json={"prediction_id": res["prediction_id"], "actual_default": res["default_prediction"]},
+        json={"prediction_id": prediction["prediction_id"], "actual_default": 1},
     )
     assert feedback.status_code == 200
     duplicate = client.post(
         "/feedback",
-        json={"prediction_id": res["prediction_id"], "actual_default": res["default_prediction"]},
+        json={"prediction_id": prediction["prediction_id"], "actual_default": 1},
     )
     assert duplicate.status_code == 409

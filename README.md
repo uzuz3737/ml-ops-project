@@ -1,279 +1,215 @@
-# 💳 Credit Card Default Prediction - End-to-End MLOps Platform
+# Credit Card Default MLOps Project
 
-[![MLOps CI/CD Pipeline](https://github.com/uzuz3737/ml-ops-project/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/uzuz3737/ml-ops-project/actions/workflows/ci-cd.yml)
-[![Python Version](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
-[![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](https://www.docker.com/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+An end-to-end MLOps example for the UCI Default of Credit Card Clients dataset. The repository keeps the original XGBoost pipeline and adds CatBoost training, MLflow tracking and registry, FastAPI and TensorFlow Serving, and Prometheus/Grafana monitoring.
 
-An enterprise-ready, production-grade MLOps platform for credit risk assessment and default prediction using the **UCI Credit Card Default Dataset**.
-
----
-
-## 🏗️ Architecture & Tech Stack
+## Architecture
 
 ```mermaid
-flowchart TD
-    subgraph Data & Pipeline Orchestration ["Data & Pipeline Orchestration (Airflow)"]
-        A["Raw Data Ingestion\n(UCI Repository / Local)"] --> B["Data Validation\n(TFDV Schema & Anomaly Detection)"]
-        B --> C["Feature Engineering\n(Financial Ratios & Delinquency)"]
-        C --> D["Model Training & Tuning\n(XGBoost Classifier)"]
-    end
-
-    subgraph Tracking & Governance ["Experimentation & Governance (MLflow)"]
-        D --> E["MLflow Experiment Tracking\n(Params, Metrics, Artifacts)"]
-        E --> F["MLflow Model Registry\n(Staging / Production Promotion)"]
-    end
-
-    subgraph Deployment & Serving ["Serving Layer (FastAPI)"]
-        F --> G["FastAPI Inference Service\n(/predict, /health, /metrics)"]
-    end
-
-    subgraph Observability ["Observability & Monitoring"]
-        G --> H["Prometheus\n(Metrics Scraper)"]
-        H --> I["Grafana Dashboards\n(RPS, Latency p95/p99, Drift)"]
-    end
-
-    subgraph Automation ["Automation & Quality (CI/CD)"]
-        J["GitHub Actions\n(Lint, Pytest, Docker Build)"]
-    end
+flowchart LR
+    A[UCI data] --> B[Validation and shared features]
+    B --> C[XGBoost / CatBoost training]
+    C --> D[MLflow tracking and Model Registry]
+    D --> E[FastAPI serving]
+    D --> F[CatBoost SavedModel export]
+    F --> G[TensorFlow Serving]
+    E --> H[Prometheus]
+    G --> H
+    H --> I[Grafana dashboards]
+    J[Airflow DAGs] --> B
+    J --> C
+    J --> K[MLflow drift and quality monitoring]
 ```
 
-| Component | Tool / Technology | Purpose |
-| :--- | :--- | :--- |
-| **Model Architecture** | [XGBoost](https://xgboost.readthedocs.io/) | Gradient boosted decision trees optimized for tabular financial risk classification |
-| **Version Control** | Git / GitHub | Code and configuration version management |
-| **Data Validation** | [TFDV (TensorFlow Data Validation)](https://www.tensorflow.org/tfx/data_validation/get_started) | Statistics generation, schema inference, skew and anomaly detection |
-| **Experiment Tracking** | [MLflow Tracking](https://mlflow.org/) | Hyperparameter logging, ROC-AUC/PR-AUC curves, and confusion matrix artifacts |
-| **Model Registry** | [MLflow Registry](https://mlflow.org/docs/latest/model-registry.html) | Centralized model lifecycle management (Production/Staging stages) |
-| **Orchestration** | [Apache Airflow](https://airflow.apache.org/) | Automated weekly DAG executing ingestion, validation, training, and deployment verification |
-| **Model Serving** | [FastAPI](https://fastapi.tiangolo.com/) + Uvicorn | High-throughput asynchronous REST API for single and batch predictions |
-| **Monitoring** | [Prometheus](https://prometheus.io/) + [Grafana](https://grafana.com/) | Real-time API telemetry (RPS, p95/p99 latency) and inference drift tracking |
-| **Containerization** | Docker & Docker Compose | Multi-container orchestration (Airflow, MLflow, FastAPI, Prometheus, Grafana) |
-| **CI/CD** | GitHub Actions | Automated linting (`flake8`), unit tests (`pytest`), and Docker image builds |
+The checked-in bootstrap snapshot contains the existing MLflow registry database and artifacts. The CatBoost Production Version 1 TensorFlow SavedModel is included as a serving artifact. Starting the system does not train a model or create a new model version.
 
----
+## Repository layout
 
-## 📂 Project Structure
-
-```plaintext
-ml-ops-project/
-├── .github/
-│   └── workflows/
-│       └── ci-cd.yml                # CI/CD: Linting, Unit testing, Docker build
-├── config/
-│   └── config.yaml                  # Centralized configuration (paths, hyperparameters)
-├── dags/
-│   ├── __init__.py
-│   └── ml_pipeline_dag.py           # Apache Airflow DAG orchestrating end-to-end steps
-├── docker/
-│   ├── Dockerfile.airflow           # Airflow custom worker & scheduler image
-│   └── Dockerfile.fastapi           # FastAPI inference image with Prometheus exporter
-├── monitoring/
-│   ├── prometheus.yml               # Prometheus scrape configuration
-│   └── grafana/
-│       ├── provisioning/
-│       │   ├── datasources/         # Auto-provisioned Prometheus datasource
-│       │   └── dashboards/          # Auto-provisioned dashboard providers
-│       └── dashboards/
-│           └── model_monitoring.json # Production Grafana dashboard
-├── serving/
-│   ├── app.py                       # FastAPI serving application
-│   ├── schemas.py                   # Pydantic request/response schemas
-│   └── metrics.py                   # Prometheus instrumentation & latency middleware
-├── src/
-│   ├── data/
-│   │   ├── ingestion.py             # Dataset fetch, train/val/test split
-│   │   └── validation.py            # TFDV schema inference & anomaly detection
-│   ├── features/
-│   │   └── engineering.py           # Domain financial features & data cleaners
-│   ├── models/
-│   │   ├── train.py                 # XGBoost training & MLflow tracking
-│   │   ├── evaluate.py              # ROC-AUC, PR-AUC, Confusion Matrix calculation
-│   │   └── registry.py              # MLflow Model Registry promotion logic
-│   └── utils/
-│       ├── config.py                # Config loader
-│       └── logger.py                # Structured logging utility
-├── tests/
-│   ├── test_features.py             # Feature engineering tests
-│   ├── test_model.py                # Model training & metrics tests
-│   └── test_api.py                  # FastAPI endpoint integration tests
-├── docker-compose.yml               # Complete multi-service orchestration
-├── requirements.txt                 # Production dependencies
-├── requirements-dev.txt             # Testing & CI dependencies
-└── README.md
+```text
+config/config.yaml                         Shared data, model, feature and serving configuration
+dags/ml_pipeline_dag.py                    Training and production monitoring DAGs
+docker/                                    Pinned service Dockerfiles
+mlflow/bootstrap/                          Registry DB and artifacts seeded on first startup
+monitoring/prometheus.yml                  Prometheus scrape targets
+monitoring/grafana/provisioning/           Prometheus datasource and dashboards
+monitoring/tf_serving/                     TensorFlow Serving metrics configuration
+models/tf_serving/CreditCardDefaultCatBoost/1/
+                                            Existing Version 1 SavedModel artifact
+serving/app.py                             FastAPI inference and feedback endpoints
+serving/export_catboost_tf_savedmodel.py   Version-aware registry exporter with parity check
+src/data/                                  Ingestion and validation
+src/features/engineering.py                Shared feature engineering
+src/models/                                XGBoost, CatBoost, evaluation, registry, drift
+tests/                                     Unit, serving, validation and monitoring tests
+docker-compose.yml                         Complete local service stack
+requirements.txt                           Pinned runtime dependencies
+requirements-dev.txt                       Pinned test and lint dependencies
 ```
 
----
+## Requirements
 
-## TensorFlow Serving Monitoring
+- Docker Desktop with Docker Compose v2
+- Python 3.11 for local development and tests
+- Git
 
-The Compose stack exports the registered `CreditCardDefaultCatBoost` Production version from MLflow into a TensorFlow SavedModel. The exporter checks prediction parity against the registered CatBoost artifact on 256 validation rows before TensorFlow Serving loads it.
+All Python runtime and developer dependencies are pinned. The Docker images use fixed service versions. Airflow and the complete stack require more memory than the MLflow/serving/monitoring subset.
 
-Start the existing MLflow, serving, Prometheus, and Grafana services:
+## A. Run the existing model (no training)
+
+### Clone and install local tools
 
 ```bash
-docker-compose up --build -d tf-serving prometheus grafana
+git clone https://github.com/uzuz3737/ml-ops-project.git
+cd ml-ops-project
+git switch main  # use pairoj_catboot until its PR has been merged
+python -m venv .venv
 ```
 
-| Service | URL |
-| :--- | :--- |
-| TensorFlow Serving REST | [http://localhost:8501](http://localhost:8501) |
-| TensorFlow Serving model status | [http://localhost:8501/v1/models/CreditCardDefaultCatBoost](http://localhost:8501/v1/models/CreditCardDefaultCatBoost) |
-| TensorFlow Serving metrics | [http://localhost:8502/monitoring/prometheus/metrics](http://localhost:8502/monitoring/prometheus/metrics) |
-| Prometheus | [http://localhost:9090](http://localhost:9090) |
-| Grafana dashboard | [http://localhost:3000/d/tf-serving-catboost-monitoring/tensorflow-serving-model-monitoring](http://localhost:3000/d/tf-serving-catboost-monitoring/tensorflow-serving-model-monitoring) (`admin` / `admin`) |
+Activate the environment and install dependencies:
 
-Send a prediction. `instances` values must use the 23 raw input fields in this order: `LIMIT_BAL, SEX, EDUCATION, MARRIAGE, AGE, PAY_0, PAY_2, PAY_3, PAY_4, PAY_5, PAY_6, BILL_AMT1..BILL_AMT6, PAY_AMT1..PAY_AMT6`.
+```powershell
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
+```
 
 ```bash
-curl -X POST http://localhost:8501/v1/models/CreditCardDefaultCatBoost:predict \\
-  -H 'Content-Type: application/json' \\
+# Linux/macOS
+source .venv/bin/activate
+```
+
+```bash
+python -m pip install -r requirements-dev.txt
+```
+
+### Start MLflow, serving and monitoring
+
+```bash
+docker-compose up --build -d mlflow fastapi-serving tf-serving prometheus grafana
+```
+
+On first startup, Compose copies `mlflow/bootstrap/mlflow.db` and its artifacts into the ignored local `mlruns/` and `mlartifacts/` runtime directories only if the local MLflow database does not exist. Existing MLflow state is never overwritten. The CatBoost exporter checks the Registry Production version; when the checked-in SavedModel matches it, the exporter reuses the artifact and does not need the training dataset.
+
+Wait for service readiness:
+
+```bash
+docker-compose ps
+```
+
+### Services
+
+| Service | URL | Purpose |
+| --- | --- | --- |
+| MLflow | [http://localhost:8000](http://localhost:8000) | Tracking UI and Model Registry |
+| FastAPI | [http://localhost:8001](http://localhost:8001) | Existing CatBoost Version 1 API by default; Swagger at `/docs` |
+| TensorFlow Serving | [http://localhost:8501](http://localhost:8501) | CatBoost REST prediction API |
+| TensorFlow Serving model status | [http://localhost:8501/v1/models/CreditCardDefaultCatBoost](http://localhost:8501/v1/models/CreditCardDefaultCatBoost) | Loaded model version and availability |
+| TensorFlow Serving metrics | [http://localhost:8502/monitoring/prometheus/metrics](http://localhost:8502/monitoring/prometheus/metrics) | TF Serving Prometheus metrics |
+| Prometheus | [http://localhost:9090](http://localhost:9090) | Scrape targets and PromQL |
+| Grafana | [http://localhost:3000](http://localhost:3000) | Dashboards; local default login `admin` / `admin` |
+| Airflow (optional full stack) | [http://localhost:8080](http://localhost:8080) | Pipeline and monitoring DAGs |
+
+The TensorFlow Serving monitoring dashboard is at [http://localhost:3000/d/tf-serving-catboost-monitoring/tensorflow-serving-model-monitoring](http://localhost:3000/d/tf-serving-catboost-monitoring/tensorflow-serving-model-monitoring). It shows request count/rate, error rate, latency quantiles, model version, and availability (`1` available, `0` unavailable).
+
+### Verify MLflow Registry Version 1
+
+The current CatBoost production model is `CreditCardDefaultCatBoost`, Version `1`, stage `Production`. From the activated local Python environment:
+
+```bash
+python -c "import mlflow; mlflow.set_tracking_uri('http://localhost:8000'); model=mlflow.catboost.load_model('models:/CreditCardDefaultCatBoost/1'); print(type(model).__name__)"
+```
+
+The FastAPI service uses CatBoost Version 1 by default so a clone can serve immediately from the checked-in Registry snapshot. Select XGBoost with `SERVING_MODEL_FAMILY=xgboost` if its registered model is available. TensorFlow Serving uses the CatBoost SavedModel derived from Registry Version 1.
+
+### Send a prediction
+
+The TensorFlow Serving endpoint accepts the 23 raw input fields in the order shown below. Feature engineering runs inside the SavedModel and matches `src/features/engineering.py`.
+
+```bash
+curl -X POST http://localhost:8501/v1/models/CreditCardDefaultCatBoost:predict \
+  -H 'Content-Type: application/json' \
   -d '{"instances":[[50000,2,2,1,24,2,2,-1,-1,-2,-2,3913,3102,689,0,0,0,0,689,0,0,0,0]]}'
 ```
 
-Stop only the monitoring stack with `docker-compose stop tf-serving prometheus grafana`; the complete project remains available through `docker-compose up --build -d`.
-
-## 🚀 Quickstart Guide
-
-### Option 1: Full Stack via Docker Compose (Recommended)
-
-To start the complete infrastructure (Airflow, MLflow, FastAPI, Prometheus, Grafana):
+The response contains probabilities in `[no_default, default]` order. Verify the loaded version and health:
 
 ```bash
-docker compose up --build -d
+curl http://localhost:8501/v1/models/CreditCardDefaultCatBoost
+curl http://localhost:8502/monitoring/prometheus/metrics
 ```
 
-#### Service URLs & Credentials:
+In Prometheus, check `up{job="tensorflow-serving"}` equals `1`. Send predictions to populate request-rate and latency panels; error rate displays `0` when no errors have occurred.
 
-| Service | URL | Credentials (if prompted) |
-| :--- | :--- | :--- |
-| **FastAPI Serving** | [http://localhost:8001](http://localhost:8001) (Swagger: `/docs`) | None |
-| **TensorFlow Serving** | [http://localhost:8501](http://localhost:8501) | None |
-| **TensorFlow Serving Metrics** | [http://localhost:8502/monitoring/prometheus/metrics](http://localhost:8502/monitoring/prometheus/metrics) | None |
-| **Airflow UI** | [http://localhost:8080](http://localhost:8080) | `admin` / `admin` |
-| **MLflow Server** | [http://localhost:8000](http://localhost:8000) | None |
-| **Prometheus** | [http://localhost:9090](http://localhost:9090) | None |
-| **Grafana** | [http://localhost:3000](http://localhost:3000) | `admin` / `admin` |
+Stop services without deleting Registry state or model files:
 
----
+```bash
+docker-compose down
+```
 
-### Option 2: Local Python Environment
+Avoid `docker-compose down -v` and do not delete `mlruns/`, `mlartifacts/`, or `models/tf_serving/` if you want to retain local runs and exported models.
 
-1. **Create and activate virtual environment**:
+### Run the full stack
+
+To also start Airflow and its metadata database:
+
+```bash
+docker-compose up --build -d
+```
+
+## B. Retrain models (only when deliberately requested)
+
+Training commands create new MLflow runs and may create a new Registry version if the configured validation ROC-AUC gate is met. They are not part of the existing-model startup flow above.
+
+1. Prepare the UCI data and splits:
+
    ```bash
-   python -m venv .venv
-   # Windows:
-   .venv\Scripts\activate
-   # Linux/macOS:
-   source .venv/bin/activate
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   pip install -r requirements-dev.txt
-   ```
-
-3. **Run Pipeline Stages Locally**:
-   ```bash
-   # 1. Ingestion
    python -m src.data.ingestion
-
-   # 2. Data Validation (TFDV)
-   python -m src.data.validation
-
-   # 3. Model Training & MLflow Tracking
-   python -m src.models.train
    ```
 
-4. **Launch Inference API**:
+2. Validate data and the shared feature inputs:
+
    ```bash
-   uvicorn serving.app:app --host 0.0.0.0 --port 8000 --reload
+   python -m src.data.validation
    ```
 
----
+3. Train one model explicitly:
 
-## 📡 API Usage & Endpoints
+   ```bash
+   python -m src.models.train          # XGBoost
+   python -m src.models.train_catboost # CatBoost
+   ```
 
-### 1. Health Check
-```bash
-curl http://localhost:8001/health
-```
-**Response**:
-```json
-{
-  "status": "healthy",
-  "model_loaded": true,
-  "model_version": "Production-Registry",
-  "model_source": "models:/CreditCardDefaultXGBoost/Production"
-}
-```
+Training settings, seeds, feature rules, evaluation threshold and Registry gates are in `config/config.yaml`. CatBoost uses the same split and shared feature engineering as XGBoost.
 
-### 2. Single Customer Default Prediction
-```bash
-curl -X POST "http://localhost:8001/predict" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "LIMIT_BAL": 50000.0,
-       "SEX": 1,
-       "EDUCATION": 2,
-       "MARRIAGE": 1,
-       "AGE": 35,
-       "PAY_0": 2,
-       "PAY_2": 2,
-       "PAY_3": 0,
-       "PAY_4": 0,
-       "PAY_5": 0,
-       "PAY_6": 0,
-       "BILL_AMT1": 25000.0,
-       "BILL_AMT2": 24000.0,
-       "BILL_AMT3": 23000.0,
-       "BILL_AMT4": 20000.0,
-       "BILL_AMT5": 19000.0,
-       "BILL_AMT6": 18000.0,
-       "PAY_AMT1": 1500.0,
-       "PAY_AMT2": 1500.0,
-       "PAY_AMT3": 1000.0,
-       "PAY_AMT4": 1000.0,
-       "PAY_AMT5": 1000.0,
-       "PAY_AMT6": 1000.0
-     }'
-```
-**Response**:
-```json
-{
-  "default_prediction": 1,
-  "default_probability": 0.7241,
-  "model_version": "Production-Registry"
-}
-```
+## Tests and code checks
 
-### 3. Prometheus Metrics Endpoint
-```bash
-curl http://localhost:8001/metrics
-```
-
----
-
-## 🧪 Testing & CI/CD
-
-### CatBoost comparison run
-
-CatBoost uses the same ingested train/validation/test splits and shared `prepare_features_and_target` feature engineering as XGBoost. Run it with `python -m src.models.train_catboost`. It logs to the separate `credit_card_default_catboost` experiment and registers as `CreditCardDefaultCatBoost` only when validation ROC-AUC reaches the configured 0.70 gate. Each run logs ROC-AUC, PR-AUC, precision, recall, F1, evaluation plots, data checksums, git revision, CatBoost version, and a `pip freeze` environment artifact. Airflow runs the CatBoost and existing XGBoost tasks in parallel after shared ingestion and validation.
-
-To serve the registered CatBoost Production model, set `serving.model_family: "catboost"` in `config/config.yaml`; the default remains XGBoost.
-
-### Data validation contract
-
-The validator checks required columns, schema consistency across train/evaluation, numeric and finite values, nulls, binary target labels, configured category domains, and configured numerical ranges. Airflow raises a task failure when validation fails, so both model training tasks are blocked. Run `pytest tests/test_validation.py -v` to see passing and deliberately corrupted data examples.
-
-### Production monitoring in MLflow
-
-`/predict` and `/predict/batch` return a `prediction_id` and append model score plus input features to the shared `data/monitoring` event store. When the outcome becomes known, submit `POST /feedback` with that ID and `actual_default` (0 or 1), for example `{"prediction_id":"<id-from-predict-response>","actual_default":1}`. The separate daily Airflow DAG compares recent feature distributions with the training reference using PSI and scores labelled feedback, then logs thresholds, alert metrics, and `monitoring_report.json` to the `credit_card_default_production_monitoring` MLflow experiment. You can also trigger a monitoring run manually with `python -m src.models.monitor`. Default alerts are PSI ≥ 0.20 and ROC-AUC < 0.70 after at least 20 labelled outcomes; feature drift uses a 7-day window, delayed feedback uses 180 days, and all thresholds/windows are configurable under `monitoring` in `config/config.yaml`.
-
-Run all unit and integration tests with coverage:
+Run the test suite:
 
 ```bash
 pytest tests/ -v --cov=src --cov=serving --cov-report=term-missing
 ```
 
-The GitHub Actions workflow at [`.github/workflows/ci-cd.yml`](file:///.github/workflows/ci-cd.yml) automatically runs linting, tests, and builds Docker containers on every pull request to `main`.
+Tests use fixed predictors or the existing CatBoost Registry Version 1; they do not fit new XGBoost/CatBoost models. The Registry integration test skips when MLflow is not running. For a full run including that test, start the MLflow service first.
+
+Run lint and Python syntax checks:
+
+```bash
+flake8 src/ serving/ dags/ tests/ --count --show-source --statistics
+python -m compileall -q src serving dags
+```
+
+## Reproducibility notes
+
+- Python runtime and test requirements are version-pinned; service container tags and the MLflow exporter dependencies are pinned.
+- `config/config.yaml` is the source for data split seed, model settings, feature rules, evaluation threshold, tracking URI, and serving settings.
+- MLflow's checked-in bootstrap snapshot supplies the existing registry metadata and artifacts. After first startup, runtime state is stored under ignored `mlruns/` and `mlartifacts/` directories.
+- CatBoost Version 1 SavedModel is included in the repository. Its probability output was checked against the registered CatBoost model on 256 validation rows before being committed.
+- The exporter only writes a new SavedModel when the configured Production version differs or the existing export is incomplete. A new registry version requires an explicit retraining/promotion operation.
+- Seeds make data splits and model training repeatable; package pins and the committed model preserve inference without retraining.
+
+## Troubleshooting
+
+- **MLflow UI opens but a model is missing:** confirm first startup copied the seed into `mlruns/mlflow.db` and `mlartifacts/`; check `docker-compose logs mlflow`.
+- **TF Serving reports the model unavailable:** check `docker-compose ps`, model status above, and `docker-compose logs tf-model-exporter tf-serving`. Confirm Registry Production Version 1 is `READY`.
+- **Prometheus target is down:** inspect `http://localhost:9090/targets`; the target is `tf-serving:8501` at `/monitoring/prometheus/metrics` inside Compose.
+- **Grafana says “No data”:** confirm its Prometheus datasource is provisioned and the Prometheus target is `UP`. Send prediction requests to populate rate and latency windows.
+- **A port is already in use:** stop the conflicting process or edit the relevant host port mapping in `docker-compose.yml`.
+- **Retraining cannot find data:** run the explicit ingestion and validation steps in section B. Existing-model serving does not require the training dataset.
