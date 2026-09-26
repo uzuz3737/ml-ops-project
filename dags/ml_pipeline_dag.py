@@ -1,6 +1,6 @@
 """
 MLOps End-to-End Pipeline DAG for Credit Card Default Prediction.
-Orchestrates: Ingestion -> TFDV Validation -> Feature Eng & XGBoost Train -> Evaluation -> MLflow Registry Promotion
+Orchestrates: Ingestion -> TFDV Validation -> Feature Eng & Logistic Regression Train -> Evaluation -> MLflow Registry Promotion
 """
 
 from datetime import datetime, timedelta
@@ -59,10 +59,10 @@ def task_health_check_service():
 with DAG(
     dag_id="credit_card_default_mlops_pipeline",
     default_args=default_args,
-    description="End-to-end XGBoost Credit Card Default Pipeline with TFDV and MLflow",
+    description="End-to-end Logistic Regression Credit Card Default Pipeline with TFDV and MLflow",
     schedule_interval="@weekly",
     catchup=False,
-    tags=["mlops", "xgboost", "tfdv", "mlflow"],
+    tags=["mlops", "logistic-regression", "tfdv", "mlflow"],
 ) as dag:
 
     ingest_step = PythonOperator(
@@ -76,7 +76,7 @@ with DAG(
     )
 
     train_step = PythonOperator(
-        task_id="train_xgboost_with_mlflow",
+        task_id="train_logreg_with_mlflow",
         python_callable=task_train_model,
     )
 

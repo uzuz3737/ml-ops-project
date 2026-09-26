@@ -1,3 +1,4 @@
+import os
 import mlflow
 from mlflow.tracking import MlflowClient
 from src.utils.config import load_config
@@ -10,7 +11,7 @@ def get_mlflow_client(config: dict = None) -> MlflowClient:
     """Returns configured MlflowClient."""
     if config is None:
         config = load_config()
-    tracking_uri = config["mlflow"].get("tracking_uri", "http://localhost:5000")
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", config["mlflow"].get("tracking_uri", "http://localhost:5000"))
     try:
         mlflow.set_tracking_uri(tracking_uri)
     except Exception as e:
@@ -21,7 +22,7 @@ def get_mlflow_client(config: dict = None) -> MlflowClient:
 def register_and_promote_model(
     run_id: str,
     model_name: str,
-    artifact_path: str = "xgboost_model",
+    artifact_path: str = "logreg_model",
     target_stage: str = "Production",
 ) -> str:
     """Registers model from run and transitions it to target stage (e.g. Production)."""

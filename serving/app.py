@@ -38,7 +38,7 @@ state = {
 def load_model(config: dict):
     """Loads model from MLflow Model Registry or local fallback artifact."""
     root = get_project_root()
-    reg_name = config["mlflow"].get("registered_model_name", "CreditCardDefaultXGBoost")
+    reg_name = config["mlflow"].get("registered_model_name", "CreditCardDefaultLogReg")
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI", config["mlflow"].get("tracking_uri", "http://localhost:5000"))
 
     # 1. Try MLflow Registry Production Model
@@ -46,7 +46,7 @@ def load_model(config: dict):
         mlflow.set_tracking_uri(tracking_uri)
         model_uri = f"models:/{reg_name}/Production"
         logger.info(f"Attempting to load model from MLflow Registry: {model_uri}")
-        model = mlflow.xgboost.load_model(model_uri)
+        model = mlflow.sklearn.load_model(model_uri)
         state["model"] = model
         state["model_version"] = "Production-Registry"
         state["model_source"] = model_uri
@@ -57,7 +57,7 @@ def load_model(config: dict):
         logger.warning(f"Could not load model from MLflow Registry: {e}. Checking local fallback...")
 
     # 2. Try Local Saved Model
-    fallback_path = root / config["serving"].get("fallback_model_path", "models/saved/xgb_model.joblib")
+    fallback_path = root / config["serving"].get("fallback_model_path", "models/saved/logreg_model.joblib")
     if fallback_path.exists():
         logger.info(f"Loading fallback model from: {fallback_path}")
         model = joblib.load(fallback_path)
@@ -84,7 +84,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Credit Card Default Scoring API",
-    description="MLOps XGBoost Inference Service with Prometheus Monitoring",
+    description="MLOps Logistic Regression Inference Service with Prometheus Monitoring",
     version="1.0.0",
     lifespan=lifespan,
 )

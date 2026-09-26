@@ -47,27 +47,22 @@ features:
     - "PAY_AMT6"
 
 model:
-  name: "xgboost_credit_default"
-  algorithm: "XGBClassifier"
+  name: "logreg_credit_default"
+  algorithm: "LogisticRegression"
   params:
-    objective: "binary:logistic"
-    eval_metric: "auc"
-    n_estimators: 150
-    max_depth: 5
-    learning_rate: 0.08
-    subsample: 0.8
-    colsample_bytree: 0.8
-    scale_pos_weight: 3.5  # handle class imbalance (~22% default rate)
+    C: 1.0
+    solver: "lbfgs"
+    max_iter: 1000
+    class_weight: "balanced"  # handle class imbalance (~22% default rate)
     random_state: 42
-    n_jobs: -1
 
 mlflow:
-  tracking_uri: "http://localhost:5000"
-  experiment_name: "credit_card_default_xgboost"
-  registered_model_name: "CreditCardDefaultXGBoost"
+  tracking_uri: "http://localhost:5001"
+  experiment_name: "credit_card_default_logreg"
+  registered_model_name: "CreditCardDefaultLogReg"
 
 serving:
   host: "0.0.0.0"
   port: 8000
-  model_source: "models:/CreditCardDefaultXGBoost/Production"
-  fallback_model_path: "models/saved/xgb_model.joblib"
+  model_source: "models:/CreditCardDefaultLogReg/Production"
+  fallback_model_path: "models/saved/logreg_model.joblib"
