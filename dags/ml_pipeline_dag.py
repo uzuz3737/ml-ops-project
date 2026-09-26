@@ -100,3 +100,25 @@ with DAG(
     # Define DAG task dependencies
     ingest_step >> validate_step >> [train_step, catboost_train_step]
     [train_step, catboost_train_step] >> health_check_step
+
+
+def task_monitor_serving():
+    from src.models.monitor import monitor_serving
+    result = monitor_serving()
+    print(f"Serving monitor MLflow run: {result['run_id']}; metrics={result['metrics']}")
+
+
+monitoring_dag = DAG(
+    dag_id="credit_card_default_daily_monitoring",
+    default_args=default_args,
+    description="Daily feature-drift and delayed-label quality report to MLflow",
+    schedule_interval="@daily",
+    catchup=False,
+    tags=["mlops", "monitoring", "mlflow", "drift"],
+)
+
+monitor_serving_step = PythonOperator(
+    task_id="log_serving_monitoring_to_mlflow",
+    python_callable=task_monitor_serving,
+    dag=monitoring_dag,
+)

@@ -236,6 +236,10 @@ To serve the registered CatBoost Production model, set `serving.model_family: "c
 
 The validator checks required columns, schema consistency across train/evaluation, numeric and finite values, nulls, binary target labels, configured category domains, and configured numerical ranges. Airflow raises a task failure when validation fails, so both model training tasks are blocked. Run `pytest tests/test_validation.py -v` to see passing and deliberately corrupted data examples.
 
+### Production monitoring in MLflow
+
+`/predict` and `/predict/batch` return a `prediction_id` and append model score plus input features to the shared `data/monitoring` event store. When the outcome becomes known, submit `POST /feedback` with that ID and `actual_default` (0 or 1), for example `{"prediction_id":"<id-from-predict-response>","actual_default":1}`. The separate daily Airflow DAG compares recent feature distributions with the training reference using PSI and scores labelled feedback, then logs thresholds, alert metrics, and `monitoring_report.json` to the `credit_card_default_production_monitoring` MLflow experiment. You can also trigger a monitoring run manually with `python -m src.models.monitor`. Default alerts are PSI ≥ 0.20 and ROC-AUC < 0.70 after at least 20 labelled outcomes; feature drift uses a 7-day window, delayed feedback uses 180 days, and all thresholds/windows are configurable under `monitoring` in `config/config.yaml`.
+
 Run all unit and integration tests with coverage:
 
 ```bash

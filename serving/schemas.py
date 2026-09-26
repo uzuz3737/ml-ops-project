@@ -32,6 +32,7 @@ class SinglePredictionResponse(BaseModel):
     default_prediction: int = Field(..., description="0 = No default, 1 = Default expected")
     default_probability: float = Field(..., description="Estimated probability of default")
     model_version: str = Field(..., description="Model identifier / version used for scoring")
+    prediction_id: Optional[str] = Field(None, description="Identifier used to attach a later ground-truth label")
 
 
 class BatchCustomerFeatures(BaseModel):
@@ -42,3 +43,13 @@ class BatchPredictionResponse(BaseModel):
     predictions: List[SinglePredictionResponse]
     count: int
     model_version: str
+
+
+class PredictionFeedbackRequest(BaseModel):
+    prediction_id: str = Field(..., min_length=1)
+    actual_default: int = Field(..., ge=0, le=1, description="Observed outcome: 0 = paid, 1 = default")
+
+
+class PredictionFeedbackResponse(BaseModel):
+    status: str
+    prediction_id: str

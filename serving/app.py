@@ -17,7 +17,10 @@ from serving.schemas import (
     SinglePredictionResponse,
     BatchCustomerFeatures,
     BatchPredictionResponse,
+    PredictionFeedbackRequest,
+    PredictionFeedbackResponse,
 )
+from serving.monitoring import record_prediction, record_feedback
 from serving.metrics import (
     PrometheusMiddleware,
     get_metrics_response,
@@ -144,11 +147,17 @@ def predict(customer: CustomerFeatures):
         # Update Prometheus Metrics
         MODEL_PREDICTIONS_TOTAL.labels(prediction_class=str(pred)).inc()
         PREDICTION_PROBABILITY_HISTOGRAM.observe(prob)
+        try:
+            prediction_id = record_prediction(input_dict, prob, pred, state["model_version"], state["config"])
+        except OSError:
+            prediction_id = None
+            logger.exception("Could not persist prediction event for MLflow monitoring")
 
         return SinglePredictionResponse(
             default_prediction=pred,
             default_probability=round(prob, 4),
             model_version=state["model_version"],
+            prediction_id=prediction_id,
         )
     except Exception as e:
         logger.error(f"Inference error: {e}", exc_info=True)
@@ -170,16 +179,24 @@ def predict_batch(payload: BatchCustomerFeatures):
         preds = (probs >= 0.5).astype(int)
 
         results = []
-        for p, prob in zip(preds, probs):
+        for customer, p, prob in zip(raw_list, preds, probs):
             pred_int = int(p)
             prob_float = float(prob)
             MODEL_PREDICTIONS_TOTAL.labels(prediction_class=str(pred_int)).inc()
             PREDICTION_PROBABILITY_HISTOGRAM.observe(prob_float)
+            try:
+                prediction_id = record_prediction(
+                    customer, prob_float, pred_int, state["model_version"], state["config"]
+                )
+            except OSError:
+                prediction_id = None
+                logger.exception("Could not persist batch prediction event for MLflow monitoring")
             results.append(
                 SinglePredictionResponse(
                     default_prediction=pred_int,
                     default_probability=round(prob_float, 4),
                     model_version=state["model_version"],
+                    prediction_id=prediction_id,
                 )
             )
 
@@ -191,6 +208,22 @@ def predict_batch(payload: BatchCustomerFeatures):
     except Exception as e:
         logger.error(f"Batch inference error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Batch inference failed: {str(e)}")
+
+
+@app.post("/feedback", response_model=PredictionFeedbackResponse, tags=["Monitoring"])
+def submit_prediction_feedback(payload: PredictionFeedbackRequest):
+    """Accept the delayed ground-truth label associated with a prediction event."""
+    if state["config"] is None:
+        raise HTTPException(status_code=503, detail="Service configuration is not loaded yet.")
+    try:
+        record_feedback(payload.prediction_id, payload.actual_default, state["config"])
+    except ValueError as exc:
+        status_code = 409 if "already" in str(exc) else 404
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    except OSError as exc:
+        logger.exception("Could not persist prediction feedback")
+        raise HTTPException(status_code=500, detail="Could not persist prediction feedback") from exc
+    return PredictionFeedbackResponse(status="recorded", prediction_id=payload.prediction_id)
 
 
 if __name__ == "__main__":

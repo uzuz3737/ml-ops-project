@@ -50,6 +50,7 @@ grafana_data/
 data/raw/
 data/processed/
 data/validation/
+data/monitoring/
 models/saved/
 *.xls
 *.xlsx

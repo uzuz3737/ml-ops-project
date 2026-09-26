@@ -97,6 +97,16 @@ serving:
   port: 8000
   model_source: "models:/CreditCardDefaultXGBoost/Production"
   fallback_model_path: "models/saved/xgb_model.joblib"
+  prediction_log_file: "data/monitoring/predictions.jsonl"
+  feedback_log_file: "data/monitoring/feedback.jsonl"
+
+monitoring:
+  experiment_name: "credit_card_default_production_monitoring"
+  window_days: 7
+  quality_window_days: 180
+  data_drift_psi_threshold: 0.2
+  min_labeled_feedback: 20
+  min_roc_auc: 0.70
 
 catboost_model:
   name: "catboost_credit_default"

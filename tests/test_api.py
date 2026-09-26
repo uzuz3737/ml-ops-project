@@ -7,7 +7,7 @@ from serving.app import app, state
 
 
 @pytest.fixture(autouse=True)
-def mock_serving_model():
+def mock_serving_model(tmp_path, monkeypatch):
     # Setup a mock trained XGBoost model for API testing
     # Generate 27 features (original 23 + 4 engineered features)
     from src.features.engineering import prepare_features_and_target
@@ -40,7 +40,9 @@ def mock_serving_model():
     }
     df = pd.DataFrame([dummy_input])
     from src.utils.config import load_config
+    import serving.monitoring as serving_monitoring
     cfg = load_config()
+    monkeypatch.setattr(serving_monitoring, "get_project_root", lambda: tmp_path)
     X, _ = prepare_features_and_target(df, cfg)
     
     mock_model = xgb.XGBClassifier(n_estimators=3, max_depth=2, random_state=42)
@@ -104,3 +106,15 @@ def test_single_predict_endpoint():
     assert "default_prediction" in res
     assert "default_probability" in res
     assert res["default_prediction"] in [0, 1]
+    assert res["prediction_id"]
+
+    feedback = client.post(
+        "/feedback",
+        json={"prediction_id": res["prediction_id"], "actual_default": res["default_prediction"]},
+    )
+    assert feedback.status_code == 200
+    duplicate = client.post(
+        "/feedback",
+        json={"prediction_id": res["prediction_id"], "actual_default": res["default_prediction"]},
+    )
+    assert duplicate.status_code == 409
