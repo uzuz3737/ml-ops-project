@@ -12,7 +12,7 @@ from airflow.operators.bash import BashOperator
 default_args = {
     "owner": "mlops-team",
     "depends_on_past": False,
-    "start_date": datetime(2026, 1, 1),
+    "start_date": datetime(2024, 1, 1),
     "email_on_failure": False,
     "email_on_retry": False,
     "retries": 1,
@@ -60,7 +60,7 @@ with DAG(
     dag_id="credit_card_default_mlops_pipeline",
     default_args=default_args,
     description="End-to-end XGBoost Credit Card Default Pipeline with TFDV and MLflow",
-    schedule_interval="@weekly",
+    schedule="@weekly",
     catchup=False,
     tags=["mlops", "xgboost", "tfdv", "mlflow"],
 ) as dag:
