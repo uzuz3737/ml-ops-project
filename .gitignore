@@ -47,13 +47,13 @@ prometheus_data/
 grafana_data/
 
 # Data artifacts
-data/raw/
 data/processed/
 data/validation/
 models/saved/
 *.xls
 *.xlsx
 *.csv
+!data/raw/credit_card_clients.csv
 
 # OS and IDE files
 .DS_Store

@@ -37,7 +37,30 @@ UCI_FEATURE_MAP = {
 
 
 def load_raw_dataset(project_root: Path) -> pd.DataFrame:
-    """Loads dataset from UCI repo or fallback local files."""
+    """Loads dataset from local files or fallback UCI repo."""
+    # 1. Check pre-bundled raw CSV
+    raw_csv = project_root / "data" / "raw" / "credit_card_clients.csv"
+    if raw_csv.exists():
+        logger.info(f"Loading raw dataset from local CSV: {raw_csv}")
+        df = pd.read_csv(raw_csv)
+        if "default_payment_next_month" not in df.columns and "Y" in df.columns:
+            df = df.rename(columns={"Y": "default_payment_next_month"})
+        return df
+
+    # 2. Check local Excel file
+    local_xls = project_root / "default of credit card clients.xls"
+    if local_xls.exists():
+        logger.info(f"Loading from local Excel: {local_xls}")
+        try:
+            df = pd.read_excel(local_xls, header=1)
+            if "ID" in df.columns:
+                df = df.drop(columns=["ID"])
+            df = df.rename(columns={"default payment next month": "default_payment_next_month"})
+            return df
+        except Exception as ex:
+            logger.warning(f"Could not read local excel: {ex}")
+
+    # 3. Fallback to UCI repository
     try:
         logger.info("Attempting to fetch Credit Card Default dataset from UCI ML repo (id=350)...")
         from ucimlrepo import fetch_ucirepo
@@ -45,35 +68,18 @@ def load_raw_dataset(project_root: Path) -> pd.DataFrame:
         X = dataset.data.features
         y = dataset.data.targets
         
-        # Rename features if they are X1..X23
         X = X.rename(columns=UCI_FEATURE_MAP)
         y = y.rename(columns=UCI_FEATURE_MAP)
         
         df = pd.concat([X, y], axis=1)
         if "default_payment_next_month" not in df.columns:
-            # If target column is still named differently
             df = df.rename(columns={df.columns[-1]: "default_payment_next_month"})
             
         logger.info(f"Successfully fetched dataset from UCI with shape: {df.shape}")
         return df
     except Exception as e:
-        logger.warning(f"Could not fetch from UCI repo: {e}. Checking local files...")
-        
-    local_xls = project_root / "default of credit card clients.xls"
-    if local_xls.exists():
-        logger.info(f"Loading from local Excel: {local_xls}")
-        try:
-            df = pd.read_excel(local_xls, header=1)
-            # Drop ID column if present
-            if "ID" in df.columns:
-                df = df.drop(columns=["ID"])
-            df = df.rename(columns={"default payment next month": "default_payment_next_month"})
-            return df
-        except Exception as ex:
-            logger.error(f"Failed to read local excel: {ex}")
-            raise ex
-            
-    raise FileNotFoundError("No available data source found (UCI API or local Excel).")
+        logger.error(f"Could not fetch from UCI repo: {e}")
+        raise FileNotFoundError("No available data source found (local CSV, Excel, or UCI API).")
 
 
 def ingest_data(config: dict = None) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
