@@ -33,7 +33,7 @@ services:
   # MLflow Tracking & Model Registry Server
   # ----------------------------------------------------
   mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.10.0
+    image: ghcr.io/mlflow/mlflow:latest
     container_name: mlflow-server
     ports:
       - "5000:5000"
