@@ -74,7 +74,13 @@ services:
     <<: *airflow-common
     container_name: airflow-init
     user: "0:0"
-    command: version
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        /entrypoint airflow version
+        airflow dags reserialize || true
+        airflow dags unpause credit_card_default_mlops_pipeline || true
     environment:
       <<: *airflow-common-env
       _AIRFLOW_DB_MIGRATE: "true"
